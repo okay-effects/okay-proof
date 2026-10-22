@@ -24,22 +24,65 @@ object Certificate:
     })
     visit(t)
     Json.Obj(List(
+      "version" -> Json.Num("1"),
       "theory" -> Json.Str(t.kernel.theory.name),
-      "hypotheses" -> Json.Arr(t.hyps.toList.map(Codec.formula)),
+      "axioms" -> axioms(t.kernel.theory),
+      "digest" -> Json.Str(digest(t.kernel.theory)),
+      "hypotheses" -> Json.Arr(t.hyps.toList.sortBy(f => Codec.formula(f).render)(using Logic.byCodePoints).map(Codec.formula)),
       "conclusion" -> Codec.formula(t.concl),
       "steps" -> Json.Arr(steps.toList))).render
 
-  /** the certificate's proof checked by `k`, every step derived again: its theorem, if it is the one claimed */
+  /** a theory's axioms as a certificate carries them: `[[name, formula], …]`, by name */
+  def axioms(th: Theory): Json =
+    Json.Arr(th.axioms.toList.sortBy(_._1)(using Logic.byCodePoints).map((n, f) => Json.Arr(List(Json.Str(n), Codec.formula(f)))))
+
+  /** a theory's DIGEST: FNV-1a, 64 bits, of its axioms' JSON — what another checker computes alike, so an auditor can
+   * pin the theory a certificate is under */
+  def digest(th: Theory): String =
+    var h = 0xcbf29ce484222325L
+    for b <- axioms(th).render.getBytes(java.nio.charset.StandardCharsets.UTF_8) do
+      h = (h ^ (b & 0xff)) * 0x100000001b3L
+    f"$h%016x"
+
+  /** the theory a certificate carries, checked: its axioms closed and well-sorted, its digest theirs */
+  def theory(text: String): Either[String, Theory] =
+    for
+      json <- Json.parse(text)
+      name <- json.get("theory").collect { case Json.Str(n) => n }.toRight("no theory's name")
+      list <- json.get("axioms").collect { case Json.Arr(xs) => xs }.toRight("no axioms")
+      pairs <- list.foldRight[Either[String, List[(String, Formula)]]](Right(Nil)) {
+        case (Json.Arr(List(Json.Str(n), f)), acc) => for g <- Codec.formula(f); l <- acc yield (n, g) :: l
+        case (other, _) => Left(s"not an axiom: ${other.render}")
+      }
+      th <- scala.util.Try(Theory(name, pairs*)).toEither.left.map(_.getMessage)
+      d <- json.get("digest").collect { case Json.Str(d) => d }.toRight("no digest")
+      _ <- Either.cond(d == digest(th), (), s"the digest $d is not the axioms' ${digest(th)}")
+    yield th
+
+  /** the certificate checked under the theory it carries: an auditor's check — what that theory says is theirs to
+   * judge (`theory`, its digest) */
+  def checkAlone(text: String): Either[String, Thm] = theory(text).flatMap(th => check(text, Kernel(th)))
+
+  /** the certificate's proof checked by `k`, every step derived again: its theorem, if it is the one claimed and the
+   * theory it carries is `k`'s */
   def check(text: String, k: Kernel): Either[String, Thm] =
     for
+      carried <- theory(text)
+      _ <- Either.cond(carried.axioms == k.theory.axioms, (),
+        s"the certificate's theory (${digest(carried)}) is not this kernel's (${digest(k.theory)})")
       json <- Json.parse(text)
       steps <- json.get("steps").collect { case Json.Arr(xs) => xs }.toRight("no steps")
       claimed <- json.get("conclusion").toRight("no conclusion").flatMap(Codec.formula)
+      claimedHyps <- json.get("hypotheses").collect { case Json.Arr(xs) => xs }.toRight("no hypotheses")
+        .flatMap(xs => xs.foldRight[Either[String, List[Formula]]](Right(Nil))((x, acc) =>
+          for f <- Codec.formula(x); l <- acc yield f :: l))
       thms <- steps.foldLeft[Either[String, Vector[Thm]]](Right(Vector.empty)) { (acc, s) =>
         acc.flatMap(done => rule(s, done).flatMap(k.derive).map(done :+ _))
       }
       last <- thms.lastOption.toRight("an empty proof")
       _ <- Either.cond(last.concl == claimed, (), s"the proof proves ${last.concl}, not the claimed $claimed")
+      _ <- Either.cond(last.hyps == claimedHyps.toSet, (),
+        s"the proof rests on ${last.hyps.mkString(", ")}, not the claimed ${claimedHyps.mkString(", ")}")
     yield last
 
   private def premises(r: Rule): List[Thm] = r match
@@ -179,7 +222,7 @@ object Codec:
   def term(t: Term): Json = t match
     case V(n, s) => Json.Arr(List(Json.Str("v"), Json.Str(n), sort(s)))
     case I(v) => Json.Arr(List(Json.Str("i"), Json.Str(v.toString)))
-    case D(v) => Json.Arr(List(Json.Str("d"), Json.Str(v.bigDecimal.toPlainString)))
+    case D(v) => Json.Arr(List(Json.Str("d"), Json.Str(Logic.plain(v.bigDecimal)))) // canonical: no trailing zero
     case S(v) => Json.Arr(List(Json.Str("s"), Json.Str(v)))
     case Ap(fn, as) => Json.Arr(List(Json.Str("ap"), Json.Str(fn.name), Json.Arr(fn.args.map(sort)), sort(fn.result),
       Json.Arr(as.map(term))))

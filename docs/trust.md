@@ -67,3 +67,11 @@ what it is about to do and the hypotheses are facts it knows.
 A certificate is a proof as data. It is never turned into a `Thm` directly: `Certificate.check` parses it and
 derives every step again with the kernel it is given. A changed amount, a missing step, a premise that refers
 forward, a theory without the policy: refused.
+
+## Two kernels
+
+The certificates are checked by a second kernel, okay-lean's `okay-check`, written again in Lean from this one — a
+mistake in one is unlikely to be the other's. `DifferentialSuite` holds them to the same verdict on 806 certificates
+and mutants. The two agree on data, not only on yes and no: the same conclusions, built alike (a polynomial's atoms
+in the order of their keys), the same theory digest. What is not yet: a proof, in Lean, that the second kernel's
+rules are sound — then the checker an auditor runs is itself proved.

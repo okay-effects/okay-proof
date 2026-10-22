@@ -6,7 +6,7 @@ import java.math.{BigDecimal as JDec, BigInteger}
  * POLYNOMIAL FORMS — part of the trusted base, with the rules that use them (`Norm`, `LinComb`, `Tighten`,
  * `MulNonneg`, `Square`): a term of sort `Int` or `Dec` read as `Σ cᵢ·mᵢ + c`, each `mᵢ` a MONOMIAL — a product of
  * ATOMS, the terms that are not ring structure (variables, functions of one's own, `div`, `round` of a non-constant …),
- * kept as one canonical term (the atoms in a fixed order, multiplied left to right). Only identities true of every
+ * kept as one canonical term (the atoms in the order of their keys, `Term.key`, multiplied left to right). Only identities true of every
  * commutative ring — so of the integers and the rationals — are used: `+`, `-`, `neg`, `*` distributed, a closed
  * computable term its value. An atom's arguments of sort `Int` or `Dec` are put in canonical form first, so `f(1 + x)`
  * and `f(x + 1)` are one atom — sound, a function giving equal values for equal arguments. To linear arithmetic a
@@ -69,12 +69,10 @@ object Linear:
     case Ap(fn, List(a, b)) if fn == Fns.mul || fn == Fns.dmul => factors(a) ++ factors(b)
     case t => List(t)
 
-  private val order: Ordering[Term] = Ordering.by[Term, (String, Int)](t => (t.toString, t.hashCode))
-
   /** atoms multiplied, in the fixed order: one term per monomial */
   def monomial(atoms: List[Term], s: Sort): Term =
     val mul = if isInt(s) then Fns.mul else Fns.dmul
-    atoms.sorted(using order).reduceLeft((a, b) => Ap(mul, List(a, b)))
+    atoms.sorted(using Logic.termOrder).reduceLeft((a, b) => Ap(mul, List(a, b)))
 
   /** an atom with its numeric arguments in canonical form */
   private def canonical(t: Term): Term = t match
@@ -89,7 +87,7 @@ object Linear:
     def lit(c: JDec): Term = if isInt(s) then I(BigInt(c.toBigIntegerExact)) else D(BigDecimal(c))
     val add = if isInt(s) then Fns.add else Fns.dadd
     val mul = if isInt(s) then Fns.mul else Fns.dmul
-    val parts = l.coeffs.toList.sortBy(_._1.toString).map { (a, c) =>
+    val parts = l.coeffs.toList.sortBy(_._1)(using Logic.termOrder).map { (a, c) =>
       if c.compareTo(one) == 0 then a else Ap(mul, List(lit(c), a))
     }
     val all = if l.const.signum != 0 || parts.isEmpty then parts :+ lit(l.const) else parts

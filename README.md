@@ -75,6 +75,20 @@ goal does not, a term of one's own replaced by its value from a fact, the altern
 strategy: `first`, `all`) — goes through any interceptor of okay-simple's: `observe` sees every step (an audit of the
 proof), `around` refuses a rule or answers from a cache. None can forge a theorem: [docs/trust.md](docs/trust.md).
 
+## Certificates, and a second checker
+
+`Certificate.of(t)` writes a theorem's proof as JSON: the theory BY VALUE (`axioms`) with its DIGEST (FNV-1a, 64 bits,
+of the axioms' JSON), the steps in order, the claimed conclusion and hypotheses. `Certificate.check(json, kernel)`
+derives every step again under a kernel whose theory is the one carried; `Certificate.checkAlone(json)` under the
+theory it carries — what that theory says is an auditor's to judge, its digest pins it.
+
+A SECOND CHECKER, independent: okay-lean's `okay-check` — this kernel written again in Lean — checks the same
+certificates. `DifferentialSuite` makes 106 proofs of every kind (transfer decisions, linear arithmetic, the Omega
+test's 1016-step refutation, products, induction, the 42 lemmas, each of the 28 rules at least once) and 700 mutants
+of them (a number, a premise, a coefficient, a rule, a step dropped, the conclusion, a hypothesis, the digest, an
+axiom), and both kernels must give every one the same verdict: 140 accepted and 666 refused by both. Runs when
+`okay-check` is built (`OKAY_LEAN`, by default `~/work/my/okay-lean`).
+
 ## Speed
 
 | | |
@@ -101,14 +115,14 @@ Scala 3.3 LTS; depends on okay-simple's release (`io.github.okay-effects::okay-e
 Maven repository on GitHub Pages).
 
 ```
-sbt test                                  # 55: the kernel's rules, linear arithmetic, lemmas, effects and forging, the policy, induction, certificates
+sbt test                                  # 56 (with okay-lean's checker built): the kernel's rules, linear arithmetic, lemmas, effects and forging, the policy, induction, certificates
 sbt "Test/runMain okay.proof.Bench"       # what it costs at run time
 ```
 
 ## Not yet
 
 Products beyond degree two of the premises, real-closed fields (a complete decision for `Dec` with products: CAD),
-rewriting at scale, a second checker of certificates in Lean (see the plan in AGENTS.md), proofs about Scala code
-itself (a macro reading definitions).
+rewriting at scale, the second checker's rules proved sound in Lean, proofs about Scala code itself (a macro
+reading definitions).
 
 License: Apache 2.0.

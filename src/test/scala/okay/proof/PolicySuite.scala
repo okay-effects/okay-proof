@@ -56,7 +56,8 @@ class PolicySuite extends munit.FunSuite:
     val t = proved(goal).get
     val cert = Certificate.of(t)
     assertEquals(Certificate.check(cert, Kernel(policy)).map(_.concl), Right(goal))
-    assert(Certificate.check(cert.replace("500.00", "5000.00"), Kernel(policy)).isLeft)
+    assert(cert.contains("\"500\""), "the amount is in the certificate, canonically")
+    assert(Certificate.check(cert.replace("\"500\"", "\"5000\""), Kernel(policy)).isLeft)
     assert(Certificate.check(cert, Kernel(Theory("bank"))).isLeft, "checked under a theory without the policy")
   }
 

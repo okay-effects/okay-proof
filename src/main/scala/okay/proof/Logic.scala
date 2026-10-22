@@ -40,6 +40,10 @@ final case class Pred(name: String, args: List[Sort]):
   override val hashCode: Int = mix(2, name.hashCode, listHash(args))
 
 sealed trait Term:
+  /** the term's KEY: a text naming it, the same in every language that reads certificates (okay-lean's checker
+   * builds it alike) — what orders the atoms of a polynomial, so that both build its term the same way */
+  lazy val key: String = Logic.key(this)
+
   /** the free variables, computed once when asked */
   lazy val free: Set[Term.V] = this match
     case v: Term.V => Set(v)
@@ -125,6 +129,39 @@ object Formula:
 object Logic:
   import Formula.*
   import Term.*
+
+  private def cps(s: String): Int = s.codePointCount(0, s.length)
+  private def named(s: String): String = s"${cps(s)}:$s"
+
+  def sortKey(s: Sort): String = s match
+    case Sort.Int => "I"
+    case Sort.Dec => "D"
+    case Sort.Str => "S"
+    case Sort.Named(n) => "N" + named(n)
+
+  /** a decimal's text: its value, no trailing zero, no exponent */
+  def plain(d: java.math.BigDecimal): String =
+    if d.signum == 0 then "0" else d.stripTrailingZeros.toPlainString
+
+  /** a term's key, by its structure: names prefixed by their length, so no two terms share one */
+  def key(t: Term): String = t match
+    case V(n, s) => "v" + named(n) + sortKey(s)
+    case I(v) => "i" + v.toString + ";"
+    case D(v) => "d" + plain(v.bigDecimal) + ";"
+    case S(v) => "s" + named(v)
+    case Ap(fn, as) =>
+      "a" + named(fn.name) + fn.args.length + "(" + fn.args.map(sortKey).mkString + ")" + sortKey(fn.result) + "[" +
+        as.map(_.key).mkString + "]"
+
+  /** texts compared by code points, as Lean compares its strings */
+  val byCodePoints: Ordering[String] = (a, b) =>
+    val (x, y) = (a.codePoints.toArray, b.codePoints.toArray)
+    var i = 0
+    while i < x.length && i < y.length && x(i) == y(i) do i += 1
+    if i < x.length && i < y.length then Integer.compare(x(i), y(i)) else Integer.compare(x.length, y.length)
+
+  /** terms in the order of their keys */
+  val termOrder: Ordering[Term] = Ordering.by[Term, String](_.key)(using byCodePoints)
 
   /** a term's sort, if it is well-sorted */
   def sortOf(t: Term): Option[Sort] = t match

@@ -34,8 +34,10 @@
   instead of 0.2 s). Completeness is tested against brute force (`OmegaSuite`: 300 random systems, 300 crossing
   strips — 44 of them by cases, 71 past the rationals' elimination). Pugh's example: ~1000 steps, 1.9 ms.
 - Polynomial reading cost linear problems ~25% (a chain 8.1 → 10.2 µs); decisions unchanged (7.4 µs).
-- A SECOND CHECKER IN LEAN (planned, not built): re-implement the rules of `Kernel.derive` and `Linear`/`Arithmetic`
-  in okay-lean as an executable checker of `Certificate` JSON (with the theory's axioms in the certificate, by value
-  or digest — today only its name is there); differential tests against this kernel on generated and mutated
-  certificates; then prove each rule sound in Lean against a semantics of formulas (Int as ℤ, Dec as ℚ); reach it
-  in-process through okay-lean's wire (FFM) or as `lake exe` for auditors.
+- THE SECOND CHECKER (2026-10-22, built): okay-lean's `Okay/Check` + `okay-check`. Certificates carry the theory
+  by value and its digest (FNV-1a 64 of the axioms' JSON); decimals written canonically (`Logic.plain`); claimed
+  hypotheses checked. Atoms are ordered by `Term.key` (length-prefixed, compared by code points) — NOT toString or
+  hashCode — so Lean builds every conclusion alike. ANY change to a rule, to `Linear`'s term building, to `Logic`'s
+  substitution or fresh names, to the codec: the same change in okay-lean's `Okay/Check`, then `DifferentialSuite`
+  (806 certificates, 0 disagreements on 2026-10-22). Left: prove the Lean rules sound (a semantics: Int as ℤ, Dec as
+  ℚ); reach the checker in-process through okay-lean's wire (FFM).
