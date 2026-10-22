@@ -12,6 +12,7 @@ Many-sorted first-order logic with equality, classical. `Logic.scala` and `Kerne
 | predicates | `Pred(name, argSorts)`: one's own |
 | formulas | `True`, `False`, `Eq`, `Lt`, `Le`, `P(pred, args)`, `Not`, `And`, `Or`, `Imp`, `All(x, f)`, `Ex(x, f)` |
 | in Scala | `a && b`, `a \|\| b`, `!a`, `a implies b`, `Formula.all(x, y)(f)` |
+| syntax | `import okay.proof.syntax.*`: `owns(u, a)`, `spent(u) + amt <= 1000.00`, `x === 3`, `forall(x, y)(f)` |
 
 The kernel's functions (`Fns`): over `Int` `+ - * neg div mod` (floor division; nothing computed of a division by
 zero); `dec` from `Int` to `Dec`; over `Dec` `d+ d- d*`, `d/` to a scale (half to even), `round` (half to even),
@@ -30,6 +31,34 @@ assert(k.derive(Rule.Compute(Eq(vat, D(BigDecimal("234.57"))))).isRight)
 assert(Logic.wellSorted(Le(Ap(limit, Nil), D(BigDecimal("1000")))))
 assert(!Logic.wellSorted(Le(x, D(BigDecimal("1")))))   // an Int against a Dec
 ```
+
+## The syntax
+
+`okay.proof.syntax` writes the same data shorter, and checks sorts as it builds — a mistake fails where it is made:
+
+```scala
+import okay.proof.syntax.*
+
+val Account = sort("Account")
+val balance = fn("balance", Account)(Sort.Dec)          // a function of one's own: Account → Dec
+val frozen = pred("frozen", Account)
+val (acc, m) = (v("acc", Account), v("m", Sort.Int))
+
+// a symbol applied like a function; a literal takes the sort of its place or of the other side
+assert(balance(acc) >= 0 == Le(D(BigDecimal(0)), Ap(balance, List(acc))))
+assert((m * 2 + 1 > m) == Lt(m, Ap(Fns.add, List(Ap(Fns.mul, List(m, I(2))), I(1)))))
+// precedence by the first character: * before + -, before < >, before = (===, =/=), before &&, before ||;
+// `implies` — a word — last
+assert((frozen(acc) || balance(acc) < 0 implies !(balance(acc) =/= 0)) ==
+  Imp(Or(P(frozen, List(acc)), Lt(Ap(balance, List(acc)), D(BigDecimal(0)))),
+    Not(Not(Eq(Ap(balance, List(acc)), D(BigDecimal(0)))))))
+assert(scala.util.Try(m + 1.5).isFailure)                 // an Int is no fraction
+assert(scala.util.Try(balance(m)).isFailure)              // an Int is no Account
+```
+
+`+` is the kernel's `+` over `Int`, `d+` over `Dec`, `++` over `Str`; `-` and `*` likewise, unary `-` is `neg` or
+`0 d- x`. A `Double` literal is read by its shortest decimal text, so `700.01` is exactly 700.01; `dec("…")` and
+`BigDecimal` say so outright. The syntax is not trusted: the kernel checks what it builds as any other formula.
 
 ## The rules
 

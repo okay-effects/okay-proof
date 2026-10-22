@@ -9,32 +9,33 @@ another checker — okay-lean's, in Lean — checks again.
 
 ```scala
 import okay.proof.*
-import okay.proof.Formula.*
-import okay.proof.Term.*
+import okay.proof.syntax.*
 
-val User = Sort.Named("User")
-val Account = Sort.Named("Account")
-def const(name: String, sort: Sort): Term = Ap(Fn(name, Nil, sort), Nil)
-def dec(s: String): Term = D(BigDecimal(s))
+val User = sort("User")
+val Account = sort("Account")
 val (ann, acc1) = (const("ann", User), const("acc1", Account))
-val owns = Pred("owns", List(User, Account))
-val mayTransfer = Pred("mayTransfer", List(User, Account, Sort.Dec))
-val spent = Fn("spentToday", List(User), Sort.Dec)
-val (u, a, amt) = (V("u", User), V("a", Account), V("amt", Sort.Dec))
+val owns = pred("owns", User, Account)
+val mayTransfer = pred("mayTransfer", User, Account, Sort.Dec)
+val spent = fn("spentToday", User)(Sort.Dec)
+val (u, a, amt) = (v("u", User), v("a", Account), v("amt", Sort.Dec))
 
 // the policy: an owner may transfer, within 1000.00 a day with what was spent today
-val policy = Theory("bank", "transfer" -> Formula.all(u, a, amt)(
-  P(owns, List(u, a)) && Le(Ap(Fns.dadd, List(Ap(spent, List(u)), amt)), dec("1000.00")) implies P(mayTransfer, List(u, a, amt))))
+val policy = Theory("bank", "transfer" -> forall(u, a, amt)(
+  owns(u, a) && spent(u) + amt <= 1000.00 implies mayTransfer(u, a, amt)))
 val bank = Kernel(policy)
 
 // what the request knows: spent today at most 300.00 — a bound, not a value
-val facts = List(P(owns, List(ann, acc1)), Le(Ap(spent, List(ann)), dec("300.00")))
+val facts = List(owns(ann, acc1), spent(ann) <= 300.00)
 
-val Right(Some(allowed)) = Auto.prove(bank, facts, P(mayTransfer, List(ann, acc1, dec("700.00")))): @unchecked
+val Right(Some(allowed)) = Auto.prove(bank, facts, mayTransfer(ann, acc1, 700.00)): @unchecked
 assert(allowed.hyps.subsetOf(facts.toSet))                                   // the facts it rests on
-assert(Auto.prove(bank, facts, P(mayTransfer, List(ann, acc1, dec("700.01")))) == Right(None))
+assert(Auto.prove(bank, facts, mayTransfer(ann, acc1, 700.01)) == Right(None))
 assert(Certificate.checkAlone(Certificate.of(allowed)).isRight)              // checked again, from JSON
 ```
+
+The syntax (`okay.proof.syntax`) builds the same terms and formulas as their constructors (`P(owns, List(u, a))`,
+`Le(…)`); a literal takes the sort of its place, `+` and `<=` pick the kernel's function by sort.
+[The logic](docs/logic.md).
 
 - **A small kernel** (`Kernel.scala`, `Logic.scala`, `Linear.scala`): 28 rules, each a pure check; a theorem relative
   to the theory it was made under. [The logic](docs/logic.md), [what is trusted](docs/trust.md).

@@ -43,3 +43,7 @@
   substitution or fresh names, to the codec: the same change in okay-lean's `Okay/Check`, then `DifferentialSuite`
   (806 certificates, 0 disagreements on 2026-10-22). Left: prove the Lean rules sound (a semantics: Int as ℤ, Dec as
   ℚ); reach the checker in-process through okay-lean's wire (FFM).
+- THE SYNTAX (2026-10-22): `okay.proof.syntax` (`Syntax.scala`, NOT trusted — it only builds data): symbols applied
+  like functions (`owns(u, a)`, extension `apply` on `Fn`/`Pred`), a literal taking its place's sort, `+ - *` and
+  `< <= > >= === =/=` by sort; a wrong sort throws at once. `SyntaxSuite` checks it builds `Bank.policy` exactly.
+  Docs examples use it; in a tuple `val (User, Account) = …` capitals are patterns — declare sorts one per line.

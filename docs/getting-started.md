@@ -38,32 +38,34 @@ A policy is a theory; what a request knows are facts; a decision is a theorem �
 policy's rules, found by `Auto`:
 
 ```scala
-val User = Sort.Named("User")
-val Account = Sort.Named("Account")
-def const(name: String, sort: Sort): Term = Ap(Fn(name, Nil, sort), Nil)
+import okay.proof.syntax.*
+
+val User = sort("User")
+val Account = sort("Account")
 val ann = const("ann", User)
 val acc1 = const("acc1", Account)
-val owns = Pred("owns", List(User, Account))
-val mayTransfer = Pred("mayTransfer", List(User, Account, Sort.Dec))
-val balance = Fn("balance", List(Account), Sort.Dec)
-def dec(s: String): Term = D(BigDecimal(s))
+val owns = pred("owns", User, Account)
+val mayTransfer = pred("mayTransfer", User, Account, Sort.Dec)
+val balance = fn("balance", Account)(Sort.Dec)
 
-val (u, a, amt) = (V("u", User), V("a", Account), V("amt", Sort.Dec))
+val (u, a, amt) = (v("u", User), v("a", Account), v("amt", Sort.Dec))
 val policy = Theory("bank",
-  "transfer" -> Formula.all(u, a, amt)(
-    P(owns, List(u, a)) && Le(dec("0"), amt) && Le(amt, Ap(balance, List(a))) implies P(mayTransfer, List(u, a, amt))))
+  "transfer" -> forall(u, a, amt)(owns(u, a) && amt >= 0 && amt <= balance(a) implies mayTransfer(u, a, amt)))
 
 val bank = Kernel(policy)
-val facts = List(P(owns, List(ann, acc1)), Eq(Ap(balance, List(acc1)), dec("250.00")))
-val goal = P(mayTransfer, List(ann, acc1, dec("100.00")))
+val facts = List(owns(ann, acc1), balance(acc1) === dec("250.00"))
+val goal = mayTransfer(ann, acc1, 100)
 
 val Right(Some(decision)) = Auto.prove(bank, facts, goal): @unchecked
 assert(decision.concl == goal)
 assert(decision.hyps.subsetOf(facts.toSet))                          // exactly the facts it rests on
-assert(Auto.prove(bank, facts, P(mayTransfer, List(ann, acc1, dec("300.00")))) == Right(None))  // more than the balance
+assert(Auto.prove(bank, facts, mayTransfer(ann, acc1, 300)) == Right(None))        // more than the balance
 ```
 
-`a && b implies c` is `(a ∧ b) → c`: `implies` is a word, so it binds the loosest.
+`okay.proof.syntax` writes formulas as they read: a symbol applied like a function, a literal taking the sort of its
+place (`100` a `Dec` there), `+ - *` and `< <= > >= === =/=` picking the kernel's function by sort. It builds the
+same data as the constructors — `P(owns, List(u, a))`, `Le(amt, Ap(balance, List(a)))` — and the kernel checks it
+as any other. `a && b implies c` is `(a ∧ b) → c`: `implies` is a word, so it binds the loosest.
 
 ## Its certificate
 
