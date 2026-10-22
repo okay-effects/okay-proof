@@ -64,3 +64,18 @@ object Infer:
   def allE[R[_]: Has[Infer]](t: Thm, by: Term): Thm ! R = step(AllE(t, by))
   def refl[R[_]: Has[Infer]](t: Term): Thm ! R = step(Refl(t))
   def subst[R[_]: Has[Infer]](eq: Thm, x: Term.V, f: Formula, t: Thm): Thm ! R = step(Subst(eq, x, f, t))
+
+  /** `⊢ f ∨ ¬f`, derived (the logic is classical): what a proof by cases splits on */
+  def cases[R[_]: Has[Infer]](f: Formula): Thm ! R =
+    val goal = Formula.Or(f, Formula.Not(f))
+    for
+      notGoal <- assume[R](Formula.Not(goal))
+      yes <- assume[R](f)
+      left <- step[R](OrI1(yes, Formula.Not(f)))
+      c1 <- step[R](NotE(notGoal, left))
+      notF <- step[R](NotI(f, c1))
+      right <- step[R](OrI2(f, notF))
+      c2 <- step[R](NotE(notGoal, right))
+      nn <- step[R](NotI(Formula.Not(goal), c2))
+      t <- step[R](Classic(nn))
+    yield t

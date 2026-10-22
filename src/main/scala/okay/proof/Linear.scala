@@ -3,12 +3,14 @@ package okay.proof
 import java.math.{BigDecimal as JDec, BigInteger}
 
 /**
- * LINEAR FORMS — part of the trusted base, with the rules that use them (`Norm`, `LinComb`, `Tighten`): a term of
- * sort `Int` or `Dec` read as `Σ cᵢ·aᵢ + c`, its ATOMS `aᵢ` the terms that are not linear structure (variables,
- * functions of one's own, products of two non-constants, `div`, `round` of a non-constant …). Only identities true of
- * the integers and the rationals are used: `+`, `-`, `neg`, a product by a constant, a closed computable term its
- * value. An atom's arguments of sort `Int` or `Dec` are put in canonical form first, so `f(1 + x)` and `f(x + 1)` are
- * one atom — sound, a function giving equal values for equal arguments.
+ * POLYNOMIAL FORMS — part of the trusted base, with the rules that use them (`Norm`, `LinComb`, `Tighten`,
+ * `MulNonneg`, `Square`): a term of sort `Int` or `Dec` read as `Σ cᵢ·mᵢ + c`, each `mᵢ` a MONOMIAL — a product of
+ * ATOMS, the terms that are not ring structure (variables, functions of one's own, `div`, `round` of a non-constant …),
+ * kept as one canonical term (the atoms in a fixed order, multiplied left to right). Only identities true of every
+ * commutative ring — so of the integers and the rationals — are used: `+`, `-`, `neg`, `*` distributed, a closed
+ * computable term its value. An atom's arguments of sort `Int` or `Dec` are put in canonical form first, so `f(1 + x)`
+ * and `f(x + 1)` are one atom — sound, a function giving equal values for equal arguments. To linear arithmetic a
+ * monomial is one more variable.
  */
 final case class Lin(coeffs: Map[Term, JDec], const: JDec):
   def +(o: Lin): Lin = Lin(Lin.merge(coeffs, o.coeffs, JDec.ONE), const.add(o.const))
@@ -49,12 +51,30 @@ object Linear:
       case Ap(fn, List(a, b)) if fn == Fns.add || fn == Fns.dadd => form(a, s) + form(b, s)
       case Ap(fn, List(a, b)) if fn == Fns.sub || fn == Fns.dsub => form(a, s) - form(b, s)
       case Ap(fn, List(a)) if fn == Fns.neg => form(a, s) * JDec.ONE.negate
-      case Ap(fn, List(a, b)) if fn == Fns.mul || fn == Fns.dmul =>
-        val (x, y) = (form(a, s), form(b, s))
-        if x.isConst then y * x.const
-        else if y.isConst then x * y.const
-        else Lin.atom(canonical(t))
+      case Ap(fn, List(a, b)) if fn == Fns.mul || fn == Fns.dmul => times(form(a, s), form(b, s), s)
       case _ => Lin.atom(canonical(t))
+
+  /** the product of two forms: distributed, each pair of monomials one monomial */
+  def times(x: Lin, y: Lin, s: Sort): Lin =
+    if x.isConst then y * x.const
+    else if y.isConst then x * y.const
+    else
+      var coeffs = Lin.merge(Lin.merge(Map.empty, x.coeffs, y.const), y.coeffs, x.const)
+      for (m, a) <- x.coeffs; (n, b) <- y.coeffs do
+        coeffs = Lin.merge(coeffs, Map(monomial(factors(m) ++ factors(n), s) -> a.multiply(b)), JDec.ONE)
+      Lin(coeffs, x.const.multiply(y.const))
+
+  /** a monomial's atoms: the factors of a product of them */
+  def factors(m: Term): List[Term] = m match
+    case Ap(fn, List(a, b)) if fn == Fns.mul || fn == Fns.dmul => factors(a) ++ factors(b)
+    case t => List(t)
+
+  private val order: Ordering[Term] = Ordering.by[Term, (String, Int)](t => (t.toString, t.hashCode))
+
+  /** atoms multiplied, in the fixed order: one term per monomial */
+  def monomial(atoms: List[Term], s: Sort): Term =
+    val mul = if isInt(s) then Fns.mul else Fns.dmul
+    atoms.sorted(using order).reduceLeft((a, b) => Ap(mul, List(a, b)))
 
   /** an atom with its numeric arguments in canonical form */
   private def canonical(t: Term): Term = t match

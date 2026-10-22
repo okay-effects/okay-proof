@@ -57,6 +57,11 @@ enum Rule:
   /** over `Int`, `0 ≤ F` (`F` of integer coefficients): `0 ≤ F/g`, `g` their gcd, the constant rounded down — what
    * the integers have and the rationals not */
   case Tighten(t: Thm)
+  /** premises read as `0 ≤ F` (`<`, `=`) and `0 ≤ G`: `0 ≤ F·G` — `0 < F·G` if both strict, `0 = F·G` if one is an
+   * equation: the products of an ordered ring */
+  case MulNonneg(a: Thm, b: Thm)
+  /** `0 ≤ t·t` */
+  case Square(t: Term)
 
 /** axioms by name, each closed and well-sorted: what a kernel takes as given — policies, definitions */
 final class Theory private (val name: String, val axioms: Map[String, Formula]):
@@ -189,6 +194,22 @@ final class Kernel(val theory: Theory):
         case Some(_) => Left(s"the sides differ by more than a constant: $f")
         case None => Left(s"not a comparison over Int or Dec: $f"))
     case LinComb(ps) => linComb(r, ps)
+    case MulNonneg(a, b) => need(ours(a, b), Kernel.foreign)((Linear.comparison(a.concl), Linear.comparison(b.concl)) match
+      case (Some((f, k1, s1)), Some((g, k2, s2))) if s1 == s2 =>
+        import Linear.Kind
+        val p = Linear.term(Linear.times(f, g, s1), s1)
+        val c =
+          if k1 == Kind.Equal || k2 == Kind.Equal then Eq(zero(s1), p)
+          else if k1 == Kind.Strict && k2 == Kind.Strict then Lt(zero(s1), p)
+          else Le(zero(s1), p)
+        thm(a.hyps ++ b.hyps, c, r)
+      case _ => Left(s"not two comparisons of one sort, Int or Dec: ${a.concl}; ${b.concl}"))
+    case Square(t) => sortOf(t) match
+      case Some(s) if s == Sort.Int || s == Sort.Dec =>
+        Linear.lin(t) match
+          case Some(f) => thm(Set.empty, Le(zero(s), Linear.term(Linear.times(f, f, s), s)), r)
+          case None => Left(s"not a numeric term: $t")
+      case _ => Left(s"not a numeric term: $t")
     case Antisym(le, ge) => need(ours(le, ge), Kernel.foreign)((le.concl, ge.concl) match
       case (Le(a, b), Le(b2, a2)) if a == a2 && b == b2 && sortOf(a).exists(s => s == Sort.Int || s == Sort.Dec) =>
         thm(le.hyps ++ ge.hyps, Eq(a, b), r)

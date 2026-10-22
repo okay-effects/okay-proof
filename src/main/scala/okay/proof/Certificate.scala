@@ -64,6 +64,7 @@ object Certificate:
     case LinComb(ps) => ps.map(_._1)
     case Antisym(a, b) => List(a, b)
     case Tighten(t) => List(t)
+    case MulNonneg(a, b) => List(a, b)
     case _ => Nil
 
   private def node(r: Rule, p: List[Int]): Json =
@@ -87,6 +88,7 @@ object Certificate:
       case Subst(_, x, g, _) => List("x" -> v(x), "f" -> f(g))
       case Induct(x, g, _, _) => List("x" -> v(x), "f" -> f(g))
       case Norm(g) => List("f" -> f(g))
+      case Square(u) => List("t" -> t(u))
       case LinComb(ps) => List("by" -> Json.Arr(ps.map((_, c) => Json.Str(c.bigDecimal.toPlainString))))
       case _ => Nil
     Json.Obj(("rule" -> Json.Str(name)) :: ("of" -> Json.Arr(p.map(i => Json.Num(i.toString)))) :: fields)
@@ -145,6 +147,8 @@ object Certificate:
           }
         case (Some(Json.Str("Antisym")), List(a, b)) => Right(Antisym(a, b))
         case (Some(Json.Str("Tighten")), List(a)) => Right(Tighten(a))
+        case (Some(Json.Str("MulNonneg")), List(a, b)) => Right(MulNonneg(a, b))
+        case (Some(Json.Str("Square")), Nil) => field("t").flatMap(t).map(Square(_))
         case (r, _) => Left(s"not a step: ${r.map(_.render).getOrElse("no rule")} of ${p.length} premises")
     }
 

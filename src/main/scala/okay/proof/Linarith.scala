@@ -11,9 +11,11 @@ import Formula.*
  * refutation: its negation assumed, Fourier–Motzkin elimination finds non-negative multipliers of the premises whose
  * sum is a false constant (Farkas'), `LinComb` checks the sum, `Compute` its falsity, and the negation is discharged.
  * An equation is two inequalities and `Antisym`. Over `Int`, a strict comparison is `+ 1 ≤`, and a derived inequality
- * whose coefficients share a factor is tightened (`Tighten`: the constant rounded down) — sound, and complete over the
- * rationals (`Dec`), not over the integers. Atoms are the terms that are not linear structure: `limit(teller)`,
- * `sum(x)`, `x * y`.
+ * whose coefficients share a factor is tightened (`Tighten`: the constant rounded down); what that does not refute
+ * goes to the OMEGA TEST, complete over the integers (`Omega`). Complete over the rationals (`Dec`) and the integers
+ * for linear problems; for products of variables (a monomial one more variable to the elimination) sound, by the
+ * premises' pairwise products and the atoms' squares (`refuteProducts`), not complete. Atoms are the terms that are not
+ * ring structure: `limit(teller)`, `sum(x)`.
  */
 object Linarith:
   import Linear.Kind
@@ -23,6 +25,10 @@ object Linarith:
     case Fact(f: Formula)
     case Given(t: Thm)
     case Tight(prov: Map[Int, JDec])
+    /** the product of two leaves' comparisons (`MulNonneg`) */
+    case Prod(i: Int, j: Int)
+    /** a square (`Square`) */
+    case Sq(t: Term)
 
   /** `0 ≤ form` (`0 < form` if strict), as the sum of leaves times their multipliers */
   private final case class Row(form: Lin, strict: Boolean, prov: Map[Int, JDec])
@@ -39,7 +45,8 @@ object Linarith:
    * atom) — a fact about another account's limit makes rows, and never a contradiction with this goal. Incomplete
    * only where the facts contradict each other apart from the goal's atoms: such a contradiction is not used */
   private def relevant(goal: Option[Formula], cands: List[(Formula, Lin)]): Set[Formula] =
-    val start = goal.flatMap(Linear.comparison).map(_._1.coeffs.keySet).getOrElse(Set.empty)
+    def atomsOf(l: Lin): Set[Term] = l.coeffs.keySet.flatMap(Linear.factors)
+    val start = goal.flatMap(Linear.comparison).map(c => atomsOf(c._1)).getOrElse(Set.empty)
     if start.isEmpty then cands.map(_._1).toSet
     else
       val g = goal.get
@@ -48,11 +55,31 @@ object Linarith:
       var grew = true
       while grew do
         grew = false
-        for (f, l) <- cands if !chosen.contains(f) && l.coeffs.keysIterator.exists(atoms.contains) do
+        for (f, l) <- cands if !chosen.contains(f) && atomsOf(l).exists(atoms.contains) do
           chosen += f
-          atoms ++= l.coeffs.keySet
+          atoms ++= atomsOf(l)
           grew = true
       chosen
+
+  /** the facts and theorems connected to `goal`'s atoms */
+  private def select(goal: Formula, facts: List[Formula], theorems: List[Thm], sort: Sort): (List[Formula], List[Thm]) =
+    val cands = (facts ++ theorems.map(_.concl)).flatMap(f => Linear.comparison(f).collect {
+      case (l, _, s) if s == sort => f -> l
+    })
+    val keep = relevant(Some(goal), cands)
+    (facts.filter(keep.contains), theorems.filter(t => keep.contains(t.concl)))
+
+  /** `False` from `assumed` (the negated goal), the facts and the theorems: linear elimination over the rationals
+   * (with the integers' tightening); over `Int` then the Omega test, complete; then products, for what is nonlinear */
+  private def falsum[R[_]: Has[Infer]](assumed: Formula, facts: List[Formula], theorems: List[Thm], s: Sort)
+      : Option[Thm ! R] =
+    val (fs, ts) = select(assumed, assumed :: facts, theorems, s)
+    // products only where there is a product: on a linear problem the steps before are complete
+    def nonlinear = (fs ++ ts.map(_.concl)).exists(f =>
+      Linear.comparison(f).exists(_._1.coeffs.keysIterator.exists(m => Linear.factors(m).length > 1)))
+    refute(fs, ts, s).map(emit[R](_))
+      .orElse(if s == Sort.Int then Omega.refute(fs, ts).map(Omega.emit[R](_)) else None)
+      .orElse(if nonlinear then refuteProducts(fs, ts, s).map(emit[R](_)) else None)
 
   private def refuteFrom(goal: Option[Formula], facts: List[Formula], theorems: List[Thm], sort: Sort, limit: Int)
       : Option[Plan] =
@@ -76,6 +103,37 @@ object Linarith:
     else ()
     facts.foreach(f => add(Leaf.Fact(f), f))
     theorems.foreach(t => add(Leaf.Given(t), t.concl))
+    eliminate(rows.toVector, sort == Sort.Int, leaves, limit).map(Plan(leaves.toVector, _, sort))
+
+  /** NONLINEAR, by products (as `nlinarith`): the premises, every product of two of them (`MulNonneg`) and the square
+   * of every atom (`Square`), a monomial one more variable to linear elimination — sound, not complete: what follows
+   * from products of degree two */
+  def refuteProducts(facts: List[Formula], theorems: List[Thm], sort: Sort, most: Int = 10, limit: Int = 6000)
+      : Option[Plan] =
+    import Kind.*
+    val base = (facts.map(f => (Leaf.Fact(f), f)) ++ theorems.map(t => (Leaf.Given(t), t.concl)))
+      .flatMap((leaf, f) => Linear.comparison(f).collect { case (l, k, s) if s == sort => (leaf, l, k) })
+      .take(most)
+    val leaves = mutable.ArrayBuffer.empty[Leaf]
+    val rows = mutable.ArrayBuffer.empty[Row]
+    def add(leaf: Leaf, form: Lin, k: Kind): Unit =
+      val i = leaves.length
+      leaves += leaf
+      k match
+        case Equal =>
+          rows += Row(form, false, Map(i -> JDec.ONE))
+          rows += Row(form * JDec.ONE.negate, false, Map(i -> JDec.ONE.negate))
+        case Strict => rows += Row(form, true, Map(i -> JDec.ONE))
+        case NonStrict => rows += Row(form, false, Map(i -> JDec.ONE))
+    base.foreach((leaf, l, k) => add(leaf, l, k))
+    val n = base.length
+    for i <- 0 until n; j <- i until n do
+      val (_, f, k1) = base(i)
+      val (_, g, k2) = base(j)
+      val k = if k1 == Equal || k2 == Equal then Equal else if k1 == Strict && k2 == Strict then Strict else NonStrict
+      add(Leaf.Prod(i, j), Linear.times(f, g, sort), k)
+    val atoms = base.flatMap(_._2.coeffs.keys).flatMap(Linear.factors).distinct
+    atoms.foreach(a => add(Leaf.Sq(a), Linear.times(Lin.atom(a), Lin.atom(a), sort), NonStrict))
     eliminate(rows.toVector, sort == Sort.Int, leaves, limit).map(Plan(leaves.toVector, _, sort))
 
   private def contradiction(r: Row): Boolean =
@@ -131,6 +189,8 @@ object Linarith:
           case Leaf.Fact(f) => Infer.assume[R](f)
           case Leaf.Given(t) => pure(t)
           case Leaf.Tight(prov) => sum(prov).flatMap(c => Infer.step[R](Rule.Tighten(c)))
+          case Leaf.Prod(a, b) => leaf(a).flatMap(x => leaf(b).flatMap(y => Infer.step[R](Rule.MulNonneg(x, y))))
+          case Leaf.Sq(t) => Infer.step[R](Rule.Square(t))
         p.map { t => memo(i) = t; t }
     def sum(prov: Map[Int, JDec]): Thm ! R =
       prov.toList.sortBy(_._1).foldLeft(pure[List[(Thm, BigDecimal)], R](Nil)) { case (acc, (i, c)) =>
@@ -166,11 +226,11 @@ object Linarith:
         yield le.flatMap(x => ge.flatMap(y => Infer.step[R](Rule.Antisym(x, y))))
       case Not(g) if Linear.comparison(g).isDefined =>
         // refute g itself: assume it, reach False, discharge
-        for s <- sortOf(g); plan <- refute(g :: facts, theorems, s)
-        yield emit[R](plan).flatMap(f => Infer.step[R](Rule.NotI(g, f)))
+        for s <- sortOf(g); f <- falsum[R](g, facts, theorems, s)
+        yield f.flatMap(f => Infer.step[R](Rule.NotI(g, f)))
       case g if Linear.comparison(g).isDefined =>
-        for s <- sortOf(g); plan <- refute(Not(g) :: facts, theorems, s)
-        yield emit[R](plan).flatMap(f => Infer.step[R](Rule.NotI(Not(g), f))).flatMap(n => Infer.step[R](Rule.Classic(n)))
+        for s <- sortOf(g); f <- falsum[R](Not(g), facts, theorems, s)
+        yield f.flatMap(f => Infer.step[R](Rule.NotI(Not(g), f))).flatMap(n => Infer.step[R](Rule.Classic(n)))
       case _ => None
 
   private def normHolds(goal: Formula): Boolean = Linear.comparison(goal).exists { (d, k, _) =>

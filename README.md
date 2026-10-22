@@ -34,19 +34,32 @@ The rules (`Rule`, checked by `Kernel.derive`): assumption, axiom, `Compute` (a 
 functions, evaluated: true in one step), introduction and elimination of each connective and quantifier (classical:
 `¬¬f` gives `f`), reflexivity and substitution of equals, induction over the integers from 0, and four that check
 LINEAR ARITHMETIC by certificate: `Norm` (an identity: `x + y = y + x`, `x ≤ x + 1`), `LinComb` (non-negative
-multiples of inequalities summed — Farkas'), `Antisym`, `Tighten` (the integers' rounding of a bound). Small enough to
+multiples of inequalities summed — Farkas'), `Antisym`, `Tighten` (the integers' rounding of a bound), and two of
+ordered rings, `MulNonneg` and `Square`. Small enough to
 read in one sitting, universal enough for arithmetic statements about every number (`InductionSuite`: `∀n. 0 ≤ n →
 0 ≤ sum(n)`, its steps by linear arithmetic, with no axiom about addition).
 
-## Linear arithmetic, and the lemmas
+## Arithmetic: linear, the integers, products
 
 `Linarith` decides a comparison over `Int` or `Dec` from facts and theorems: `x ≤ y, y ≤ z ⊢ x ≤ z`; `spent(ann) ≤
 300.00, daily(teller) = 1500.00 ⊢ spent(ann) + 900.00 ≤ daily(teller)`; `x = y + 1, y = 3 ⊢ x = 4`. It refutes the
-negated goal by Fourier–Motzkin elimination, the multipliers it finds are the certificate, and the kernel checks it
-(`LinComb`, `Compute`): the procedure is trusted for nothing. Complete over the rationals (`Dec`); over the integers
-sound and stronger than the rationals (`x < y < x + 1` is impossible, `2x = 1` has no solution: a strict bound is
-`+ 1 ≤`, a derived bound is tightened), not complete. Terms of one's own are its atoms (`limit(teller)`, `sum(x)`,
-`x * y`). `Auto` uses it for every comparison a fact does not settle by its value.
+negated goal, and what it finds is a certificate the kernel checks (`LinComb`, `Compute`, …): the procedures are
+trusted for nothing.
+
+- **Over the rationals** (`Dec`): Fourier–Motzkin elimination — complete.
+- **Over the integers** (`Int`): the same with the integers' tightening first, then the **Omega test** (Pugh): exact
+  elimination where it can, a fresh `σ` for an equation with no coefficient ±1 (`mod̂`), and otherwise the dark shadow
+  or the grey shadow's splinters, each a case — complete for linear constraints. `27 ≤ 11x + 13y ≤ 45, −10 ≤ 7x − 9y ≤
+  4` has rational solutions and no integer one: refuted. Checked against brute force on 600 random systems, 300 of
+  them thin crossing strips where the rationals' elimination is not enough.
+- **Products of variables**: a term is a polynomial (`Norm` proves ring identities, `(x+y)² = x² + 2xy + y²`); the
+  kernel knows that products of non-negatives are non-negative (`MulNonneg`) and squares are (`Square`); the search
+  adds the premises' pairwise products and the atoms' squares, as Mathlib's `nlinarith` does: `0 ≤ x, 0 ≤ y ⊢ 0 ≤
+  x·y`, `2 ≤ x ⊢ 4 ≤ x·x`, `0 ≤ p ≤ 10.00, 0 ≤ q ≤ 5 ⊢ p·q ≤ 50.00`. Sound, not complete (nothing can be, over the
+  integers).
+
+Terms of one's own are atoms (`limit(teller)`, `sum(x)`). `Auto` uses all of it for every comparison a fact does not
+settle by its value.
 
 `Lemmas(kernel)`: a library of general theorems — the orders (`leTrans`, `ltLeTrans`, `leTotal`, `notLe`, …),
 addition (`addComm`, `addAssoc`, `addLeAdd`, `addNonneg`, …) over `Int` and `Dec`, the integers' (`ltSuccLe`),
@@ -66,15 +79,18 @@ proof), `around` refuses a rule or answers from a cache. None can forge a theore
 
 | | |
 |---|---|
-| a decision proved: transfer allowed under the policy, 25 steps, found by the search on effects | 8.3 µs |
-| refused: every branch tried | 4.8 µs |
-| from bounds, `spent(ann) ≤ 300.00`, by linear arithmetic | 12.9 µs |
-| linear arithmetic: a chain of three, over `Int` | 8.1 µs |
+| a decision proved: transfer allowed under the policy, 25 steps, found by the search on effects | 7.4 µs |
+| refused: every branch tried | 4.5 µs |
+| from bounds, `spent(ann) ≤ 300.00`, by linear arithmetic | 12.6 µs |
+| linear arithmetic: a chain of three, over `Int` | 10.2 µs |
 | over `Int`, `2x = 1` refuted, a tightening in it | 5.3 µs |
-| an equation over `Dec` (two refutations) | 13.8 µs |
+| an equation over `Dec` (two refutations) | 17.5 µs |
+| the Omega test: `3x + 5y = 1` in a box (a fresh `σ`) | 60 µs |
+| the Omega test: Pugh's example, ~1000 steps, by cases | 1.9 ms |
+| products: `0 ≤ p ≤ 10, 0 ≤ q ≤ 5 ⊢ p·q ≤ 50` | 107 µs |
 | one step | 20–360 ns |
 | exact money arithmetic, a step | 110 ns |
-| the lemma library, 42 lemmas proved | 224 µs, once |
+| the lemma library, 42 lemmas proved | 276 µs, once |
 | a certificate written (2.9 KB) / checked, every step derived again | 14 µs / 27 µs |
 
 `sbt "Test/runMain okay.proof.Bench"` (JDK 26, Apple silicon, the median of five rounds).
@@ -85,14 +101,14 @@ Scala 3.3 LTS; depends on okay-simple's release (`io.github.okay-effects::okay-e
 Maven repository on GitHub Pages).
 
 ```
-sbt test                                  # 44: the kernel's rules, linear arithmetic, lemmas, effects and forging, the policy, induction, certificates
+sbt test                                  # 55: the kernel's rules, linear arithmetic, lemmas, effects and forging, the policy, induction, certificates
 sbt "Test/runMain okay.proof.Bench"       # what it costs at run time
 ```
 
 ## Not yet
 
-Multiplication of variables (the atoms of linear arithmetic are its only nonlinear terms), the integers' complete
-decision (the Omega test's shadows), rewriting at scale, a second checker of certificates in another language
-(okay-lean's wire could carry them), proofs about Scala code itself (a macro reading definitions).
+Products beyond degree two of the premises, real-closed fields (a complete decision for `Dec` with products: CAD),
+rewriting at scale, a second checker of certificates in Lean (see the plan in AGENTS.md), proofs about Scala code
+itself (a macro reading definitions).
 
 License: Apache 2.0.

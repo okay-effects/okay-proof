@@ -3,8 +3,8 @@
 - Scala 3.3.8, sbt; depends on okay-simple's PUBLISHED 0.1.0 (resolver in build.sbt), not on the working tree of
   `~/work/my/okay-simple` (another session may be editing it). `sbt test` must pass before a commit; commits carry no
   Co-Authored-By lines.
-- THE TRUSTED BASE is `Kernel.scala` (`Kernel.derive`, `Arithmetic`), `Logic.scala` and `Linear.scala` (linear forms,
-  read by `Norm`, `LinComb`, `Tighten`); `docs/trust.md` says why
+- THE TRUSTED BASE is `Kernel.scala` (`Kernel.derive`, `Arithmetic`), `Logic.scala` and `Linear.scala` (polynomial
+  forms, read by `Norm`, `LinComb`, `Tighten`, `MulNonneg`, `Square`); `docs/trust.md` says why
   nothing else is. Any change there: a test of what the rule refuses, not only what it gives (`KernelSuite`). Do not
   add a way to make a `Thm` outside `Kernel` (its constructor is `private[Kernel]`), nor to read one from data other
   than by `Certificate.check` (which derives every step again).
@@ -26,3 +26,16 @@
 - LEMMAS: `Lemmas(kernel)`, proved on first use and kept per kernel; `LemmasSuite` checks each closed, of no
   hypothesis, owned. Add a lemma by proving it there (`arith` for linear ones), never as an axiom.
 - `given` and `then` are Scala 3 keywords: not parameter names.
+- THE INTEGERS AND PRODUCTS (2026-10-22): `Linear` reads polynomials (a monomial one canonical product term, the
+  atoms sorted); `MulNonneg`, `Square` in the kernel. `Linarith.falsum` tries, in order: the rationals' elimination
+  with tightening; over `Int` the OMEGA TEST (`Omega.scala`: unit/`mod̂` equation elimination with `∃σ` + `ExE`, exact
+  elimination, real shadow, then dark/grey by `Infer.cases` + `OrE` — no kernel rule of its own); products of
+  premises only if a premise has a real monomial (running them on linear problems made 300 random systems take 300 s
+  instead of 0.2 s). Completeness is tested against brute force (`OmegaSuite`: 300 random systems, 300 crossing
+  strips — 44 of them by cases, 71 past the rationals' elimination). Pugh's example: ~1000 steps, 1.9 ms.
+- Polynomial reading cost linear problems ~25% (a chain 8.1 → 10.2 µs); decisions unchanged (7.4 µs).
+- A SECOND CHECKER IN LEAN (planned, not built): re-implement the rules of `Kernel.derive` and `Linear`/`Arithmetic`
+  in okay-lean as an executable checker of `Certificate` JSON (with the theory's axioms in the certificate, by value
+  or digest — today only its name is there); differential tests against this kernel on generated and mutated
+  certificates; then prove each rule sound in Lean against a semantics of formulas (Int as ℤ, Dec as ℚ); reach it
+  in-process through okay-lean's wire (FFM) or as `lake exe` for auditors.

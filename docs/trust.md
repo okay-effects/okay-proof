@@ -11,12 +11,14 @@ the inference step an effect (`Infer`) does not add to it.
 - `Arithmetic`: the intrinsic evaluator behind `Rule.Compute` — exact integers, exact decimals, rounding only by the
   functions that say so (`round` half to even, `roundHalfUp`, `d/` to a scale), strings. A formula it cannot evaluate
   (a symbol of one's own, a quantifier, a division by zero) is never computed, so it proves nothing about it.
-- `Linear` and the linear rules (`Norm`, `LinComb`, `Antisym`, `Tighten`): a term of `Int` or `Dec` read as
-  `Σ cᵢ·aᵢ + c` by identities true of the integers and the rationals only (`+ - neg`, a product by a constant, a closed
-  computable term its value; an atom's numeric arguments in canonical form, a function giving equal values for equal
-  arguments). Why each rule is sound, in one line each:
+- `Linear` and the arithmetic rules (`Norm`, `LinComb`, `Antisym`, `Tighten`, `MulNonneg`, `Square`): a term of
+  `Int` or `Dec` read as a polynomial `Σ cᵢ·mᵢ + c` over atoms by identities true of every commutative ring (`+ - neg
+  *` distributed, a closed computable term its value; a monomial one canonical product; an atom's numeric arguments in
+  canonical form, a function giving equal values for equal arguments). Why each rule is sound, in one line each:
   - `Norm`: if `b - a` normalizes to a constant `c`, then `b - a = c` for every value of the atoms, so `a = b`,
     `a ≤ b`, `a < b` hold as `c = 0`, `c ≥ 0`, `c > 0`;
+  - `MulNonneg`: in an ordered ring a product of non-negatives is non-negative, of positives positive, and anything
+    times `0` is `0`; `Square`: a square is non-negative;
   - `LinComb`: premises `0 ≤ Fᵢ` (`<`, `=`) true; a sum of non-negative multiples of non-negatives is non-negative,
     positive if a strict one has a positive multiple; any multiple of `0 = F` is `0`. Over `Int`, `a < b` is read
     `a + 1 ≤ b` (true of the integers), and the multipliers are integers, so the sum is a term of `Int`;
@@ -24,8 +26,10 @@ the inference step an effect (`Infer`) does not add to it.
   - `Tighten`: over `Int`, `Σcᵢxᵢ ≥ -k` with `g` dividing every `cᵢ` gives `Σ(cᵢ/g)xᵢ ≥ ⌈-k/g⌉ = -⌊k/g⌋`, the left
     side an integer.
 
-  The decision procedure that finds the multipliers (`Linarith`: Fourier–Motzkin, the integers' tightening) is NOT
-  trusted: its result is a list of steps the kernel checks. Lemmas (`Lemmas`) are theorems proved by the kernel, not
+  The decision procedures are NOT trusted: their result is a list of steps the kernel checks. `Linarith` finds
+  Fourier–Motzkin multipliers (with the integers' tightening, and products of premises for what is nonlinear); the
+  OMEGA TEST (`Omega`) needs no rule of its own — its case splits are `f ∨ ¬f` derived and `OrE`, its fresh variable
+  `σ` is `∃σ. σ = Q` and `ExE`, its eliminations `LinComb` and `Tighten`. Lemmas (`Lemmas`) are theorems proved by the kernel, not
   axioms.
 - The THEORY's content: its axioms are taken as given. A policy that is wrong gives wrong theorems, correctly derived
   from it. A theory refuses an axiom that is open or ill-sorted, nothing more.

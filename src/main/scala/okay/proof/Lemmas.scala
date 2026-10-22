@@ -176,19 +176,7 @@ final class Lemmas(val kernel: Kernel):
   /** `⊢ f ∨ ¬f` */
   def excludedMiddle(f: Formula): Thm = keep("excludedMiddle", f)(excludedMiddleP[Infer](f))
 
-  private def excludedMiddleP[R[_]: Has[Infer]](f: Formula): Thm ! R =
-    val goal = Or(f, Not(f))
-    for
-      notGoal <- Infer.assume[R](Not(goal))
-      yes <- Infer.assume[R](f)
-      left <- Infer.step[R](Rule.OrI1(yes, Not(f)))
-      c1 <- Infer.step[R](Rule.NotE(notGoal, left))
-      notF <- Infer.step[R](Rule.NotI(f, c1))
-      right <- Infer.step[R](Rule.OrI2(f, notF))
-      c2 <- Infer.step[R](Rule.NotE(notGoal, right))
-      nn <- Infer.step[R](Rule.NotI(Not(goal), c2))
-      t <- Infer.step[R](Rule.Classic(nn))
-    yield t
+  private def excludedMiddleP[R[_]: Has[Infer]](f: Formula): Thm ! R = Infer.cases[R](f)
 
   /** `⊢ (f → g) → (¬g → ¬f)` */
   def contrapositive(f: Formula, g: Formula): Thm = keep("contrapositive", (f, g)) {
