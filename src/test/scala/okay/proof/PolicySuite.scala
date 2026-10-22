@@ -36,6 +36,21 @@ class PolicySuite extends munit.FunSuite:
     assertEquals(proved(transfer(ann, acc1, "1000.00"), later), None) // 600 + 1000 > 1500
   }
 
+  test("facts as BOUNDS, not values: what was spent known only to be at most 300 — linear arithmetic decides") {
+    val bounded = facts.map {
+      case Eq(s, v) if s == spent(ann) => Le(spent(ann), v)
+      case f => f
+    }
+    val t = proved(transfer(ann, acc1, "900.00"), bounded).getOrElse(fail("no proof")) // spent + 900 ≤ 300 + 900 ≤ 1500
+    assert(t.hyps.contains(Le(spent(ann), dec("300.00"))), t.hyps.toString)
+    assertEquals(proved(transfer(ann, acc1, "1250.00"), bounded), None) // over the limit of one transfer
+    val looser = bounded.map(f => if f == Le(spent(ann), dec("300.00")) then Le(spent(ann), dec("600.00")) else f)
+    assertEquals(proved(transfer(ann, acc1, "1000.00"), looser), None) // spent may be 600: 1600 > 1500
+    assert(proved(transfer(ann, acc1, "900.00"), looser).isDefined) // 600 + 900 ≤ 1500
+    val unknown = bounded.filterNot(_ == Le(spent(ann), dec("300.00")))
+    assertEquals(proved(transfer(ann, acc1, "1.00"), unknown), None) // nothing known of what was spent
+  }
+
   test("the CERTIFICATE: checked again by a fresh kernel of the policy; a changed one refused") {
     val goal = transfer(ann, acc1, "500.00")
     val t = proved(goal).get

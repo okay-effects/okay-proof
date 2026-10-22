@@ -61,6 +61,9 @@ object Certificate:
     case ExE(e, _, t) => List(e, t)
     case Subst(eq, _, _, t) => List(eq, t)
     case Induct(_, _, b, s) => List(b, s)
+    case LinComb(ps) => ps.map(_._1)
+    case Antisym(a, b) => List(a, b)
+    case Tighten(t) => List(t)
     case _ => Nil
 
   private def node(r: Rule, p: List[Int]): Json =
@@ -83,6 +86,8 @@ object Certificate:
       case Refl(u) => List("t" -> t(u))
       case Subst(_, x, g, _) => List("x" -> v(x), "f" -> f(g))
       case Induct(x, g, _, _) => List("x" -> v(x), "f" -> f(g))
+      case Norm(g) => List("f" -> f(g))
+      case LinComb(ps) => List("by" -> Json.Arr(ps.map((_, c) => Json.Str(c.bigDecimal.toPlainString))))
       case _ => Nil
     Json.Obj(("rule" -> Json.Str(name)) :: ("of" -> Json.Arr(p.map(i => Json.Num(i.toString)))) :: fields)
 
@@ -128,6 +133,18 @@ object Certificate:
         case (Some(Json.Str("Subst")), List(a, b)) => for x <- field("x").flatMap(v); g <- fm("f") yield Subst(a, x, g, b)
         case (Some(Json.Str("Induct")), List(a, b)) =>
           for x <- field("x").flatMap(v); g <- fm("f") yield Induct(x, g, a, b)
+        case (Some(Json.Str("Norm")), Nil) => fm("f").map(Norm(_))
+        case (Some(Json.Str("LinComb")), ps) if ps.nonEmpty => field("by").flatMap {
+            case Json.Arr(cs) if cs.length == ps.length =>
+              cs.foldRight[Either[String, List[BigDecimal]]](Right(Nil)) {
+                case (Json.Str(c), acc) => acc.flatMap(l => scala.util.Try(BigDecimal(c, java.math.MathContext.UNLIMITED))
+                    .toOption.toRight(s"not a coefficient: $c").map(_ :: l))
+                case (_, _) => Left("a coefficient that is not a string")
+              }.map(cs => LinComb(ps.zip(cs)))
+            case _ => Left("as many coefficients as premises")
+          }
+        case (Some(Json.Str("Antisym")), List(a, b)) => Right(Antisym(a, b))
+        case (Some(Json.Str("Tighten")), List(a)) => Right(Tighten(a))
         case (r, _) => Left(s"not a step: ${r.map(_.render).getOrElse("no rule")} of ${p.length} premises")
     }
 

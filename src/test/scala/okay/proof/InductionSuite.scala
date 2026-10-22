@@ -61,3 +61,33 @@ class InductionSuite extends munit.FunSuite:
     val wrong = ok(AllI(x, ok(ImpI(hyp, ok(AndE2(ok(Assume(hyp))))))))
     assert(k.derive(Induct(x, f, base, wrong)).left.exists(_.contains("the step")))
   }
+
+/** the same theorem with no axiom about addition: the step by linear arithmetic, from the definition and the
+ * hypothesis — `Linarith` instead of a `pos` axiom */
+class InductionByArithmeticSuite extends munit.FunSuite:
+  val sumFn = Fn("sum", List(Sort.Int), Sort.Int)
+  def sum(t: Term) = Ap(sumFn, List(t))
+  def plus(a: Term, b: Term) = Ap(Fns.add, List(a, b))
+  val n = V("n", Sort.Int)
+  val theory = Theory("sums",
+    "sum0" -> Eq(sum(I(0)), I(0)),
+    "sumS" -> All(n, Imp(Le(I(0), n), Eq(sum(plus(n, I(1))), plus(sum(n), plus(n, I(1)))))))
+  val k = Kernel(theory)
+  def ok(r: Rule): Thm = k.derive(r).fold(e => fail(s"refused: $e"), identity)
+  def arith(goal: Formula, theorems: Thm*): Thm =
+    Linarith.decide(k, goal, Nil, theorems.toList).fold(e => fail(e), _.getOrElse(fail(s"no certificate for $goal")))
+
+  test("∀n. 0 ≤ n → 0 ≤ sum(n), each arithmetic step by a certificate") {
+    val x = V("x", Sort.Int)
+    val f = Le(I(0), sum(x))
+    val base = arith(Le(I(0), sum(I(0))), ok(Axiom("sum0")))
+    val hyp = And(Le(I(0), x), f)
+    val h = ok(Assume(hyp))
+    val unfold = ok(ImpE(ok(AllE(ok(Axiom("sumS")), x)), ok(AndE1(h))))
+    val next = arith(Le(I(0), sum(plus(x, I(1)))), ok(AndE1(h)), ok(AndE2(h)), unfold)
+    val step = ok(AllI(x, ok(ImpI(hyp, next))))
+    val all = ok(Induct(x, f, base, step))
+    assertEquals(all.concl, All(x, Imp(Le(I(0), x), f)))
+    assertEquals(all.hyps, Set.empty[Formula])
+    assertEquals(Certificate.check(Certificate.of(all), Kernel(theory)).map(_.concl), Right(all.concl))
+  }

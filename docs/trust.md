@@ -11,6 +11,22 @@ the inference step an effect (`Infer`) does not add to it.
 - `Arithmetic`: the intrinsic evaluator behind `Rule.Compute` — exact integers, exact decimals, rounding only by the
   functions that say so (`round` half to even, `roundHalfUp`, `d/` to a scale), strings. A formula it cannot evaluate
   (a symbol of one's own, a quantifier, a division by zero) is never computed, so it proves nothing about it.
+- `Linear` and the linear rules (`Norm`, `LinComb`, `Antisym`, `Tighten`): a term of `Int` or `Dec` read as
+  `Σ cᵢ·aᵢ + c` by identities true of the integers and the rationals only (`+ - neg`, a product by a constant, a closed
+  computable term its value; an atom's numeric arguments in canonical form, a function giving equal values for equal
+  arguments). Why each rule is sound, in one line each:
+  - `Norm`: if `b - a` normalizes to a constant `c`, then `b - a = c` for every value of the atoms, so `a = b`,
+    `a ≤ b`, `a < b` hold as `c = 0`, `c ≥ 0`, `c > 0`;
+  - `LinComb`: premises `0 ≤ Fᵢ` (`<`, `=`) true; a sum of non-negative multiples of non-negatives is non-negative,
+    positive if a strict one has a positive multiple; any multiple of `0 = F` is `0`. Over `Int`, `a < b` is read
+    `a + 1 ≤ b` (true of the integers), and the multipliers are integers, so the sum is a term of `Int`;
+  - `Antisym`: the orders are antisymmetric;
+  - `Tighten`: over `Int`, `Σcᵢxᵢ ≥ -k` with `g` dividing every `cᵢ` gives `Σ(cᵢ/g)xᵢ ≥ ⌈-k/g⌉ = -⌊k/g⌋`, the left
+    side an integer.
+
+  The decision procedure that finds the multipliers (`Linarith`: Fourier–Motzkin, the integers' tightening) is NOT
+  trusted: its result is a list of steps the kernel checks. Lemmas (`Lemmas`) are theorems proved by the kernel, not
+  axioms.
 - The THEORY's content: its axioms are taken as given. A policy that is wrong gives wrong theorems, correctly derived
   from it. A theory refuses an axiom that is open or ill-sorted, nothing more.
 - Scala's encapsulation: `Thm`'s constructor is `private[Kernel]`. Reflection, `asInstanceOf` on a forged object, or

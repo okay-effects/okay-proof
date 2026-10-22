@@ -34,6 +34,20 @@ object Bench:
     time("a step: ∀ out, the policy's first variable", 1_000_000)(k.derive(AllE(ax, ann)))
     time("a DECISION: transfer allowed, searched on effects, proved", 50_000)(Auto.prove(k, facts, goal))
     time("a decision refused: no proof, every branch tried", 50_000)(Auto.prove(k, facts, transfer(ann, acc1, "1250.00")))
+    val bounded = facts.map {
+      case Eq(s, v) if s == spent(ann) => Le(spent(ann), v)
+      case f => f
+    }
+    time("a DECISION from bounds: spent(ann) ≤ 300, linear arithmetic", 50_000)(Auto.prove(k, bounded, transfer(ann, acc1, "900.00")))
+    val (x, y, z, w) = (V("x", Sort.Int), V("y", Sort.Int), V("z", Sort.Int), V("w", Sort.Int))
+    val empty = Kernel(Theory.empty)
+    time("Linarith: x ≤ y, y ≤ z, z ≤ w ⊢ x ≤ w (Int)", 100_000)(Linarith.decide(empty, Le(x, w), List(Le(x, y), Le(y, z), Le(z, w))))
+    time("Linarith: 2x = 1 ⊢ false (Int, a cut)", 100_000)(Linarith.decide(empty, Lt(I(1), I(0)), List(Eq(Ap(Fns.mul, List(I(2), x)), I(1)))))
+    val (a2, b2) = (V("a", Sort.Dec), V("b", Sort.Dec))
+    time("Linarith: a = 0.10, b = 0.20 ⊢ a + b = 0.30 (Dec, two refutations)", 100_000)(
+      Linarith.decide(empty, Eq(Ap(Fns.dadd, List(a2, b2)), dec("0.30")), List(Eq(a2, dec("0.10")), Eq(b2, dec("0.20")))))
+    time("Norm: x + y = y + x, one step", 1_000_000)(empty.derive(Norm(Eq(Ap(Fns.add, List(x, y)), Ap(Fns.add, List(y, x))))))
+    time("the lemma library: 42 lemmas proved", 200)(Lemmas(Kernel(Theory.empty)).all)
     time("its certificate written (JSON)", 50_000)(Certificate.of(proof))
     time("its certificate checked: parsed, every step derived again", 50_000)(Certificate.check(cert, k))
 

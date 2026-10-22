@@ -10,8 +10,9 @@ import okay.effects.std.*
  * `Choose`, so the handler is the strategy — `first`, the first proof depth first; `all`, every proof.
  *
  * A goal is, in turn: a fact (`assume`); computable (`compute`, exact arithmetic in one step); a conjunction (both
- * proved); a disjunction (a side chosen); a formula with a term of one's own whose value a fact gives (`limit(teller)
- * = 1000`: rewritten, then proved); the head of a rule (its variables bound by the head, the rest by facts matching
+ * proved); a disjunction (a side chosen); a comparison over `Int` or `Dec` that follows linearly from the facts
+ * (`Linarith`: `spent(ann) ≤ 300` and `daily(teller) = 1500` give `spent(ann) + 500 ≤ daily(teller)`); a formula with
+ * a term of one's own whose value a fact gives (rewritten, then proved); the head of a rule (its variables bound by the head, the rest by facts matching
  * its body, the body then proved). Nothing here is trusted: a wrong step is refused by the kernel.
  */
 final class Auto(theory: Theory, facts: List[Formula], depth: Int = 32):
@@ -41,7 +42,9 @@ final class Auto(theory: Theory, facts: List[Formula], depth: Int = 32):
   private def go[R[_]: Has[Infer]: Has[Choose]](goal: Formula, d: Int): Thm ! R =
     if d <= 0 then none[R]
     else if factSet.contains(goal) then assume[R](goal)
-    else if goal.free.isEmpty && Arithmetic.truth(goal).contains(true) then compute[R](goal)
+    else if goal.free.isEmpty && Arithmetic.truth(goal).isDefined then
+      // closed and computable: true in one step, or false — a branch that ends here
+      if Arithmetic.truth(goal).contains(true) then compute[R](goal) else none[R]
     else goal match
       case And(a, b) => go[R](a, d - 1).flatMap(ta => go[R](b, d - 1).flatMap(tb => andI[R](ta, tb)))
       case Or(a, b) => among[Boolean, R](List(true, false)).flatMap { left =>
@@ -49,9 +52,14 @@ final class Auto(theory: Theory, facts: List[Formula], depth: Int = 32):
           else go[R](b, d - 1).flatMap(t => step[R](Rule.OrI2(a, t)))
         }
       case _ =>
+        // a value a fact gives first (the cheaper proof); then, for a comparison over Int or Dec, linear arithmetic
+        // over the facts — a certificate the kernel checks; then the rules
         rewrite(goal) match
           case Some((s, v, eq)) => byRewriting[R](goal, s, v, eq, d)
-          case None => byRules[R](goal, d)
+          case None =>
+            Linarith.sortOf(goal).flatMap(_ => Linarith.prove[R](goal, facts)) match
+              case Some(proof) => proof
+              case None => byRules[R](goal, d)
 
   /** a ground term of one's own in `goal` whose value a fact gives: the term, the value, the fact */
   private def rewrite(goal: Formula): Option[(Term, Term, Formula)] =

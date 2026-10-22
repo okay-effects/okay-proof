@@ -43,6 +43,21 @@ enum Rule:
   /** `f[0/x]` and `∀x. 0 ≤ x ∧ f → f[x+1/x]`: `∀x. 0 ≤ x → f` */
   case Induct(x: Term.V, f: Formula, base: Thm, step: Thm)
 
+  // LINEAR ARITHMETIC, by certificate: a decision procedure outside the kernel finds the certificate, these check it
+
+  /** `a = b`, `a ≤ b` or `a < b` (over `Int` or `Dec`) whose sides' linear forms differ by a constant of the right
+   * sign: an identity of linear arithmetic, in one step — `x + y = y + x`, `x ≤ x + 1` */
+  case Norm(f: Formula)
+  /** premises read as `0 ≤ F`, `0 < F`, `0 = F` (`Linear.comparison`: `≤ < =` and the negated `≤ <`), each times its
+   * coefficient — `≥ 0` for an inequality, any for an equation, an integer over `Int` — summed: `0 ≤ ΣλF`, or
+   * `0 < ΣλF` if a strict one counts. With a constant sum of the wrong sign this is a contradiction: Farkas' */
+  case LinComb(premises: List[(Thm, BigDecimal)])
+  /** `a ≤ b` and `b ≤ a`: `a = b` */
+  case Antisym(le: Thm, ge: Thm)
+  /** over `Int`, `0 ≤ F` (`F` of integer coefficients): `0 ≤ F/g`, `g` their gcd, the constant rounded down — what
+   * the integers have and the rationals not */
+  case Tighten(t: Thm)
+
 /** axioms by name, each closed and well-sorted: what a kernel takes as given — policies, definitions */
 final class Theory private (val name: String, val axioms: Map[String, Formula]):
   def apply(n: String): Option[Formula] = axioms.get(n)
@@ -158,6 +173,60 @@ final class Kernel(val theory: Theory):
           need(alphaEq(step.concl, want), s"the step ${step.concl} is not $want")(
             thm(base.hyps ++ step.hyps, All(x, Imp(Le(Term.I(0), x), f)), r))
         })
+    case Norm(f) =>
+      import Linear.Kind
+      val shape = f match
+        case _: Eq | _: Le | _: Lt => true
+        case _ => false
+      need(shape && wellSorted(f), s"not a comparison: $f")(Linear.comparison(f) match
+        case Some((d, k, _)) if d.isConst =>
+          val c = d.const.signum
+          val holds = k match
+            case Kind.Equal => c == 0
+            case Kind.NonStrict => c >= 0
+            case Kind.Strict => c > 0
+          need(holds, s"the sides differ by ${d.const}: $f is false")(thm(Set.empty, f, r))
+        case Some(_) => Left(s"the sides differ by more than a constant: $f")
+        case None => Left(s"not a comparison over Int or Dec: $f"))
+    case LinComb(ps) => linComb(r, ps)
+    case Antisym(le, ge) => need(ours(le, ge), Kernel.foreign)((le.concl, ge.concl) match
+      case (Le(a, b), Le(b2, a2)) if a == a2 && b == b2 && sortOf(a).exists(s => s == Sort.Int || s == Sort.Dec) =>
+        thm(le.hyps ++ ge.hyps, Eq(a, b), r)
+      case (x, y) => Left(s"not a ≤ b and b ≤ a: $x; $y"))
+    case Tighten(t) => need(ours(t), Kernel.foreign)(Linear.comparison(t.concl) match
+      case Some((d, Linear.Kind.NonStrict, Sort.Int)) if !d.isConst && Linear.integral(d) =>
+        val g = java.math.BigDecimal(Linear.gcd(d))
+        val c = d.const.divide(g, 0, java.math.RoundingMode.FLOOR)
+        val scaled = Lin(d.coeffs.view.mapValues(_.divide(g)).toMap, c)
+        thm(t.hyps, Le(Term.I(0), Linear.term(scaled, Sort.Int)), r)
+      case _ => Left(s"not 0 ≤ F over Int, F of integer coefficients and an atom: ${t.concl}"))
+
+  private def zero(s: Sort): Term = if s == Sort.Int then Term.I(0) else Term.D(BigDecimal(0))
+
+  private def linComb(r: Rule, ps: List[(Thm, BigDecimal)]): Either[String, Thm] =
+    import Linear.Kind
+    val read = ps.map((t, c) => (t, c.bigDecimal, Linear.comparison(t.concl)))
+    read.collectFirst { case (t, _, None) => t } match
+      case Some(t) => Left(s"not a linear comparison over Int or Dec: ${t.concl}")
+      case None =>
+        val rows = read.map { case (t, c, Some((f, k, s))) => (t, c, f, k, s); case _ => sys.error("unreachable") }
+        val sorts = rows.map(_._5).distinct
+        if ps.isEmpty then Left("no premises")
+        else if !ours(ps.map(_._1)*) then Left(Kernel.foreign)
+        else if sorts.length != 1 then Left(s"premises of two sorts: ${sorts.mkString(", ")}")
+        else
+          val s = sorts.head
+          rows.collectFirst {
+            case (t, c, _, k, _) if k != Kind.Equal && c.signum < 0 => s"a negative coefficient $c for ${t.concl}"
+            case (t, c, _, _, _) if s == Sort.Int && c.stripTrailingZeros.scale > 0 => s"over Int, $c is not an integer"
+          } match
+            case Some(why) => Left(why)
+            case None =>
+              val total = rows.foldLeft(Lin.zero)((acc, r) => acc + r._3 * r._2)
+              val strict = rows.exists(r => r._4 == Kind.Strict && r._2.signum > 0)
+              val t = Linear.term(total, s)
+              thm(rows.foldLeft(Set.empty[Formula])(_ ++ _._1.hyps),
+                if strict then Lt(zero(s), t) else Le(zero(s), t), r)
 
 object Kernel:
   /** a THEOREM: hypotheses ⊢ conclusion, made by its kernel alone (`by` the step that made it) */

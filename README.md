@@ -32,9 +32,27 @@ the loosest).
 
 The rules (`Rule`, checked by `Kernel.derive`): assumption, axiom, `Compute` (a closed formula of the kernel's
 functions, evaluated: true in one step), introduction and elimination of each connective and quantifier (classical:
-`¬¬f` gives `f`), reflexivity and substitution of equals, induction over the integers from 0. Small enough to read in
-one sitting, universal enough for arithmetic statements about every number (`InductionSuite`: `∀n. 0 ≤ n → 0 ≤
-sum(n)`).
+`¬¬f` gives `f`), reflexivity and substitution of equals, induction over the integers from 0, and four that check
+LINEAR ARITHMETIC by certificate: `Norm` (an identity: `x + y = y + x`, `x ≤ x + 1`), `LinComb` (non-negative
+multiples of inequalities summed — Farkas'), `Antisym`, `Tighten` (the integers' rounding of a bound). Small enough to
+read in one sitting, universal enough for arithmetic statements about every number (`InductionSuite`: `∀n. 0 ≤ n →
+0 ≤ sum(n)`, its steps by linear arithmetic, with no axiom about addition).
+
+## Linear arithmetic, and the lemmas
+
+`Linarith` decides a comparison over `Int` or `Dec` from facts and theorems: `x ≤ y, y ≤ z ⊢ x ≤ z`; `spent(ann) ≤
+300.00, daily(teller) = 1500.00 ⊢ spent(ann) + 900.00 ≤ daily(teller)`; `x = y + 1, y = 3 ⊢ x = 4`. It refutes the
+negated goal by Fourier–Motzkin elimination, the multipliers it finds are the certificate, and the kernel checks it
+(`LinComb`, `Compute`): the procedure is trusted for nothing. Complete over the rationals (`Dec`); over the integers
+sound and stronger than the rationals (`x < y < x + 1` is impossible, `2x = 1` has no solution: a strict bound is
+`+ 1 ≤`, a derived bound is tightened), not complete. Terms of one's own are its atoms (`limit(teller)`, `sum(x)`,
+`x * y`). `Auto` uses it for every comparison a fact does not settle by its value.
+
+`Lemmas(kernel)`: a library of general theorems — the orders (`leTrans`, `ltLeTrans`, `leTotal`, `notLe`, …),
+addition (`addComm`, `addAssoc`, `addLeAdd`, `addNonneg`, …) over `Int` and `Dec`, the integers' (`ltSuccLe`),
+equality for any sort (`eqSym`, `eqTrans`), the classical schemas for any formulas (`excludedMiddle`,
+`contrapositive`, `deMorganAnd`, `deMorganOr`) — each PROVED by the kernel when first asked for, and kept: the
+trusted base does not grow.
 
 ## Proofs as programs, steps as an effect
 
@@ -46,10 +64,20 @@ proof), `around` refuses a rule or answers from a cache. None can forge a theore
 
 ## Speed
 
-A decision proved — transfer allowed under the policy, 25 steps, found by the search on effects — in about 8 µs;
-refused (every branch tried) in about 5 µs; one step 20–300 ns; exact money arithmetic 100 ns a step. A certificate:
-about 18 µs to write (2.9 KB), 26 µs to check (every step derived again). `sbt "Test/runMain okay.proof.Bench"`
-(JDK 26, Apple silicon, the median of five rounds).
+| | |
+|---|---|
+| a decision proved: transfer allowed under the policy, 25 steps, found by the search on effects | 8.3 µs |
+| refused: every branch tried | 4.8 µs |
+| from bounds, `spent(ann) ≤ 300.00`, by linear arithmetic | 12.9 µs |
+| linear arithmetic: a chain of three, over `Int` | 8.1 µs |
+| over `Int`, `2x = 1` refuted, a tightening in it | 5.3 µs |
+| an equation over `Dec` (two refutations) | 13.8 µs |
+| one step | 20–360 ns |
+| exact money arithmetic, a step | 110 ns |
+| the lemma library, 42 lemmas proved | 224 µs, once |
+| a certificate written (2.9 KB) / checked, every step derived again | 14 µs / 27 µs |
+
+`sbt "Test/runMain okay.proof.Bench"` (JDK 26, Apple silicon, the median of five rounds).
 
 ## Build
 
@@ -57,14 +85,14 @@ Scala 3.3 LTS; depends on okay-simple's release (`io.github.okay-effects::okay-e
 Maven repository on GitHub Pages).
 
 ```
-sbt test                                  # the kernel's rules, effects and forging, the policy, induction, certificates
+sbt test                                  # 44: the kernel's rules, linear arithmetic, lemmas, effects and forging, the policy, induction, certificates
 sbt "Test/runMain okay.proof.Bench"       # what it costs at run time
 ```
 
 ## Not yet
 
-Linear arithmetic over variables (a decision procedure: the kernel computes only closed formulas), equational
-rewriting at scale, a library of arithmetic lemmas, a second checker of certificates in another language (okay-lean's
-wire could carry them), proofs about Scala code itself (a macro reading definitions).
+Multiplication of variables (the atoms of linear arithmetic are its only nonlinear terms), the integers' complete
+decision (the Omega test's shadows), rewriting at scale, a second checker of certificates in another language
+(okay-lean's wire could carry them), proofs about Scala code itself (a macro reading definitions).
 
 License: Apache 2.0.
