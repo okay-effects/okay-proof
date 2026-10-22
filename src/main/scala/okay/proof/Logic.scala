@@ -59,13 +59,13 @@ object Term:
     override def toString = value.toString
   final case class D(value: BigDecimal) extends Term:
     override val hashCode: Int = mix(5, value.hashCode)
-    override def toString = value.bigDecimal.toPlainString
+    override def toString = Logic.plain(value.bigDecimal)
   final case class S(value: String) extends Term:
     override val hashCode: Int = mix(6, value.hashCode)
     override def toString = "\"" + value + "\""
   final case class Ap(fn: Fn, args: List[Term]) extends Term:
     override val hashCode: Int = mix(7, fn.hashCode, listHash(args))
-    override def toString = s"${fn.name}(${args.mkString(", ")})"
+    override def toString = if args.isEmpty then fn.name else s"${fn.name}(${args.mkString(", ")})"
 
 sealed trait Formula:
   lazy val free: Set[Term.V] = this match

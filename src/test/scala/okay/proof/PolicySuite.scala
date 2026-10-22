@@ -86,5 +86,5 @@ class PolicySuite extends munit.FunSuite:
         def ret(a: List[String]) = pure(a)
         def answer[X](op: Pay[X]): X = op match
           case Pay.Transfer(_, _, amount, _) => s"sent $amount")))
-    assertEquals(ran, (List("refused: no proof for ann() acc1() 900.00"), List("sent 500.00", "refused")))
+    assertEquals(ran, (List("refused: no proof for ann acc1 900.00"), List("sent 500.00", "refused")))
   }
