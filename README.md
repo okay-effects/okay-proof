@@ -53,6 +53,17 @@ The syntax (`okay.proof.syntax`) builds the same terms and formulas as their con
 
 Documentation: [docs/](docs/README.md) — every example compiled and run by `sbt test`.
 
+## Use it
+
+```text
+resolvers ++= Seq("okay-proof" at "https://okay-effects.github.io/okay-proof/maven",
+  "okay-scala" at "https://okay-effects.github.io/okay-scala/maven")
+libraryDependencies += "io.github.okay-effects" %%% "okay-proof" % "0.1.0"    // the prover
+libraryDependencies += "io.github.okay-effects" %%% "okay-policy" % "0.1.0"   // the policy language (specs/policy.md)
+```
+
+For the JVM and Scala.js (`%%%`), Scala 3.3 on.
+
 ## Build
 
 Scala 3.3 LTS, sbt; the JVM and the browser (Scala.js); depends on okay-scala's release
