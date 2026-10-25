@@ -17,18 +17,27 @@ object Printer:
         case None => source.fold("")(s => s" from $s"))
     case Decl.State(n, ps, s, window, init, _) =>
       s"state $n(${params(ps)}): $s" + window.fold("")(w => s" per ${w.word}") + s" = ${expr(init)}"
-    case Decl.Call(tool, ps, _) => s"call $tool(${params(ps)})"
+    case Decl.Call(tool, ps, _) => s"call ${toolName(tool)}(${params(ps)})"
     case Decl.Rule(verdict, target, when, updates, because, _) =>
-      s"${verdict.word} ${target.word}" +
+      s"${verdict.word} ${targetWord(target)}" +
         when.fold("")(c => s"\n  when ${cond(c)}") +
         (if updates.isEmpty then "" else updates.map(update).mkString("\n  then ", ", ", "")) +
         because.fold("")(b => s"\n  because ${quote(b)}")
     case Decl.Count(target, when, updates, _) =>
-      s"count ${target.word}" + when.fold("")(c => s"\n  when ${cond(c)}") + updates.map(update).mkString("\n  then ", ", ", "")
+      s"count ${targetWord(target)}" + when.fold("")(c => s"\n  when ${cond(c)}") + updates.map(update).mkString("\n  then ", ", ", "")
     case Decl.Test(n, givens, caller, tool, args, expect, because, _) =>
-      s"test ${quote(n)}\n  given ${givens.map(givenText).mkString(", ")}\n  when $caller calls $tool(" +
+      s"test ${quote(n)}\n  given ${givens.map(givenText).mkString(", ")}\n  when $caller calls ${toolName(tool)}(" +
         args.map(a => s"${a.name}: ${expr(a.value)}").mkString(", ") + s")\n  expect ${expect.word}" +
         because.fold("")(b => s" ${quote(b)}")
+
+  /** a tool's name as written: a text if it is no name (`"list-files"`) */
+  def toolName(t: String): String =
+    if t.nonEmpty && (t.head.isLetter || t.head == '_') && t.forall(c => c.isLetterOrDigit || c == '_' || c == '.') then t
+    else quote(t)
+
+  private def targetWord(t: Target): String = t match
+    case Target.Tool(n) => toolName(n)
+    case other => other.word
 
   private def params(ps: List[Param]): String =
     ps.map(p => s"${p.name}${if p.optional then "?" else ""}: ${p.sort}").mkString(", ")

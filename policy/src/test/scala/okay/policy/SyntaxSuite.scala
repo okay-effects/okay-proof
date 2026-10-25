@@ -66,3 +66,14 @@ class SyntaxSuite extends munit.FunSuite:
     assertEquals(problem("policy p\nwhen").message,
       "expected a declaration: type, fact, state, call, allow, ask, deny or count, found 'when'")
   }
+
+  test("a tool no name can be, in quotes: written and read again") {
+    val text = "policy p\ntype User\ncall \"list-files\"(path: Text)\nallow \"list-files\" when path starts \"/ws/\"\n"
+    val p = parsed(text)
+    assertEquals(p.calls.map(_.tool), List("list-files"))
+    assertEquals(p.rules.head.target, Target.Tool("list-files"))
+    assertEquals(Printer(parsed(Printer(p))), Printer(p))
+    assert(Printer(p).contains("allow \"list-files\""))
+    val tests = "tests for p\ntest \"t\"\n  given x(a)\n  when ann calls \"list-files\"(path: \"/ws/a\")\n  expect allow\n"
+    assertEquals(Parser.parseTests(tests).map(_.tests.head.tool), Right("list-files"))
+  }

@@ -136,6 +136,13 @@ object Parser:
         (t, p)
       case _ => expected(what)
 
+    /** a tool's name: a name (`stripe.refund`), or a text for one no name can be (`"list-files"`) */
+    private def tool(what: String): String = peek match
+      case Tok.Str(v, _) if v.nonEmpty =>
+        next()
+        v
+      case _ => name(what)._1
+
     private def text(what: String): String = peek match
       case Tok.Str(v, _) =>
         next()
@@ -207,7 +214,7 @@ object Parser:
         Decl.State(n, ps, s, window, expr(), p)
       case Tok.Name("call", p) =>
         next()
-        val (tool, _) = name("a tool's name")
+        val tool = this.tool("a tool's name")
         Decl.Call(tool, params(), p)
       case Tok.Name("allow" | "ask" | "deny", p) => rule(p)
       case Tok.Name("count", p) =>
@@ -272,8 +279,11 @@ object Parser:
     private def target(): Target =
       if acceptSym("*") then Target.Any
       else
-        val (n, _) = name("a tool, a server's `name.*`, or `*`")
-        if acceptSym(".*") then Target.Server(n) else Target.Tool(n)
+        peek match
+          case Tok.Str(_, _) => Target.Tool(tool("a tool"))
+          case _ =>
+            val (n, _) = name("a tool, a server's `name.*`, or `*`")
+            if acceptSym(".*") then Target.Server(n) else Target.Tool(n)
 
     private def update(): Update =
       val (n, p) = name("a state to change")
@@ -294,7 +304,7 @@ object Parser:
       word("when")
       val (caller, _) = name("who calls")
       word("calls")
-      val (tool, _) = name("the tool called")
+      val tool = this.tool("the tool called")
       sym("(")
       val as = ArrayBuffer.empty[Arg]
       if !isSym(")") then
