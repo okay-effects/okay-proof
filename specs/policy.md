@@ -1,6 +1,6 @@
 # okay-policy — a language of policies, each decision a theorem
 
-Status: SPEC, 2026-10-25. Module `policy` of okay-proof (a cross project: the JVM and the browser).
+Status: steps 1–3 and the tests' runner built, 2026-10-25 (`policy/`). Module `policy` of okay-proof (a cross project: the JVM and the browser).
 
 ## Why
 
@@ -188,6 +188,10 @@ A policy is parsed and checked once; each tool's candidate rules are compiled to
 (the external ones' time aside), conditions evaluated, one proof built and checked by the kernel, its certificate
 written. Target: under 50 µs for a policy of tens of rules, on the JVM; measured in the browser too. A certificate's
 full re-check (≈60 µs) is the audit's, not each call's.
+
+Measured 2026-10-25 (`PolicyBench`, `SpeedSuite`), the example policy: parsed and checked 20 µs; a decision allowed and
+proved 8.4 µs on the JVM, ~48 µs in Node (Scala.js, the tests' unoptimized link); an ask 4.0 µs, the default deny
+explained 2.7 µs; its certificate (4.6 KB) written 53 µs — the costliest part, worth making faster.
 
 ## In the browser
 

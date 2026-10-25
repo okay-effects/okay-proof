@@ -81,6 +81,16 @@ object Types:
 
   def check(p: Policy): Either[List[Problem], Checked] = Checking(p).run()
 
+  /** a condition with its negations on atoms alone (`not (a and b)` is `not a or not b`): what a decision's proof
+   * can take apart — the policy means the same */
+  def nnf(c: TCond): TCond = c match
+    case TCond.And(a, b) => TCond.And(nnf(a), nnf(b))
+    case TCond.Or(a, b) => TCond.Or(nnf(a), nnf(b))
+    case TCond.Not(TCond.Not(a)) => nnf(a)
+    case TCond.Not(TCond.And(a, b)) => TCond.Or(nnf(TCond.Not(a)), nnf(TCond.Not(b)))
+    case TCond.Not(TCond.Or(a, b)) => TCond.And(nnf(TCond.Not(a)), nnf(TCond.Not(b)))
+    case other => other
+
   /** the text parsed and checked: the parser's problem, or the checker's */
   def apply(text: String): Either[List[Problem], Checked] = Parser.parse(text).left.map(List(_)).flatMap(check)
 
@@ -158,7 +168,7 @@ object Types:
       if tools.isEmpty || tools.exists(t => !sigs.calls.contains(t)) then return None
       val env = args ++ Map("caller" -> Sort.Entity(callerType), "tool" -> Sort.Text)
       val scope = Scope(env, sigs, r.target, tools)
-      val when = r.when.flatMap(cond(_, scope))
+      val when = r.when.flatMap(cond(_, scope)).map(nnf)
       val updates = r.updates.flatMap(update(_, scope))
       if r.when.isEmpty && r.verdict == Verdict.Allow && r.updates.isEmpty then
         problem(r.pos, "an allow with no condition and no update does nothing: it allows nothing alone")

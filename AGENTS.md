@@ -52,3 +52,10 @@
   like functions (`owns(u, a)`, extension `apply` on `Fn`/`Pred`), a literal taking its place's sort, `+ - *` and
   `< <= > >= === =/=` by sort; a wrong sort throws at once. `SyntaxSuite` checks it builds `Bank.policy` exactly.
   Docs examples use it; in a tuple `val (User, Account) = …` capitals are patterns — declare sorts one per line.
+- THE POLICY LANGUAGE (2026-10-25): module `policy` (package `okay.policy`, JVM + Scala.js), specs/policy.md.
+  Parser (Lexer + recursive descent, places), Printer (round trip), Types (checker; conditions to negation normal
+  form), Theorize (the policy as a `Theory`: a rule `∀ caller, args. C ⇒ allow:tool(...)`), Eval (untrusted: chooses),
+  Prove (builds the proof from the evaluation, no search: axiom, ∀ out, atoms by `Compute` with the facts' values then
+  `Subst` back with each fact's equation reversed), Decide (deny > allow with a condition > ask > default deny, fail
+  closed), Facts / Store effects (Store.Memory with windows), Tests (a policy's `test` blocks). An allow with no
+  condition only adds its updates. Decision 8.4 µs JVM; certificate 53 µs.
