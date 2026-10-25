@@ -99,6 +99,10 @@ object Parser:
   def parse(text: String): Either[Problem, Policy] =
     Lexer(text).flatMap(toks => Parsing(toks).policy())
 
+  /** a file of tests: `tests for <policy>`, then `test` blocks */
+  def parseTests(text: String): Either[Problem, TestFile] =
+    Lexer(text).flatMap(toks => Parsing(toks).tests())
+
   private final class Fail(val problem: Problem) extends RuntimeException(null, null, false, false)
 
   private final class Parsing(toks: Vector[Tok]):
@@ -147,6 +151,19 @@ object Parser:
         Right(Policy(n, decls.toList))
       catch case f: Fail => Left(f.problem)
 
+    def tests(): Either[Problem, TestFile] =
+      try
+        val p = word("tests")
+        word("for")
+        val (n, _) = name("the policy's name")
+        val out = ArrayBuffer.empty[Decl.Test]
+        while !peek.isInstanceOf[Tok.End] do
+          peek match
+            case Tok.Name("test", tp) => out += test(tp)
+            case _ => expected("a test")
+        Right(TestFile(n, out.toList, p))
+      catch case f: Fail => Left(f.problem)
+
     private def decl(): Decl = peek match
       case Tok.Name("type", p) =>
         next()
@@ -182,8 +199,8 @@ object Parser:
         val updates = ArrayBuffer(update())
         while acceptSym(",") do updates += update()
         Decl.Count(target, when, updates.toList, p)
-      case Tok.Name("test", p) => test(p)
-      case _ => expected("a declaration: type, fact, state, call, allow, ask, deny, count or test")
+      case Tok.Name("test", p) => fail(p, "a test goes in the policy's file of tests (`tests for <policy>`), not in it")
+      case _ => expected("a declaration: type, fact, state, call, allow, ask, deny or count")
 
     private def window(): Window = peek match
       case Tok.Name("minute", _) => next(); Window.Minute

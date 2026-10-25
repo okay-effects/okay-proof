@@ -128,4 +128,6 @@ final case class Policy(name: String, decls: List[Decl]):
   def calls: List[Decl.Call] = decls.collect { case d: Decl.Call => d }
   def rules: List[Decl.Rule] = decls.collect { case d: Decl.Rule => d }
   def counts: List[Decl.Count] = decls.collect { case d: Decl.Count => d }
-  def tests: List[Decl.Test] = decls.collect { case d: Decl.Test => d }
+
+/** A FILE OF TESTS, beside its policy: `tests for payments`, then its tests */
+final case class TestFile(policy: String, tests: List[Decl.Test], pos: Pos)

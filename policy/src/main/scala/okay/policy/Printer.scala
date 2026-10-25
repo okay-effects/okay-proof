@@ -5,6 +5,9 @@ object Printer:
   def apply(p: Policy): String =
     (s"policy ${p.name}" :: p.decls.map(decl)).mkString("", "\n\n", "\n")
 
+  def apply(f: TestFile): String =
+    (s"tests for ${f.policy}" :: f.tests.map(decl)).mkString("", "\n\n", "\n")
+
   def decl(d: Decl): String = d match
     case Decl.Type(n, _) => s"type $n"
     case Decl.Fact(n, ps, result, source, _) =>

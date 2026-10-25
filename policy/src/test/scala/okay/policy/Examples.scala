@@ -40,6 +40,12 @@ object Examples:
       |
       |allow stripe.refund when role(caller) = "teller"
       |
+      |""".stripMargin
+
+  /** its tests, in their own file */
+  val paymentsTests: String =
+    """tests for payments
+      |
       |test "a small payment is allowed"
       |  given owns(ann, acc1), role(ann) = "teller", balance(acc1) = 900.00, spent(ann) = 100.00
       |  when ann calls stripe.create_payment(account: acc1, amount: 50.00, currency: "usd")

@@ -19,13 +19,19 @@ class SyntaxSuite extends munit.FunSuite:
       (Verdict.Allow, Target.Tool("stripe.create_payment")), (Verdict.Ask, Target.Tool("stripe.create_payment")),
       (Verdict.Deny, Target.Any), (Verdict.Allow, Target.Tool("stripe.refund"))))
     assertEquals(p.counts.map(_.target), List(Target.Any))
-    assertEquals(p.tests.map(_.expect), List(Verdict.Allow, Verdict.Ask, Verdict.Deny))
-    assertEquals(p.tests(1).because, Some("a large payment"))
-    assertEquals(p.tests(2).givens.head, Given.Holds("not owns".drop(4), p.tests(2).givens.head match
-      case Given.Holds(_, as, _, _) => as
-      case _ => Nil, false, p.tests(2).givens.head match
-      case g: Given.Holds => g.pos
-      case _ => Pos(0, 0)))
+  }
+
+  test("the tests, in their own file") {
+    val f = Parser.parseTests(Examples.paymentsTests).fold(p => fail(p.toString), identity)
+    assertEquals(f.policy, "payments")
+    assertEquals(f.tests.map(_.expect), List(Verdict.Allow, Verdict.Ask, Verdict.Deny))
+    assertEquals(f.tests(1).because, Some("a large payment"))
+    val Given.Holds(name, _, truth, _) = f.tests(2).givens.head: @unchecked
+    assertEquals((name, truth), ("owns", false))
+    val once = Printer(f)
+    assertEquals(Printer(Parser.parseTests(once).toOption.get), once)
+    assertEquals(Parser.parse("policy p\ntest \"t\"").left.map(_.message),
+      Left("a test goes in the policy's file of tests (`tests for <policy>`), not in it"))
   }
 
   test("printed and parsed again: the same text") {
@@ -58,5 +64,5 @@ class SyntaxSuite extends munit.FunSuite:
     assertEquals(problem("policy p\nallow * because \"no end").message, "a text not closed")
     assertEquals(problem("policy p\nallow * when x # 1").message, "an unexpected character '#'")
     assertEquals(problem("policy p\nwhen").message,
-      "expected a declaration: type, fact, state, call, allow, ask, deny, count or test, found 'when'")
+      "expected a declaration: type, fact, state, call, allow, ask, deny or count, found 'when'")
   }

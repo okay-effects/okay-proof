@@ -57,7 +57,9 @@
   form), Theorize (the policy as a `Theory`: a rule `∀ caller, args. C ⇒ allow:tool(...)`), Eval (untrusted: chooses),
   Prove (builds the proof from the evaluation, no search: axiom, ∀ out, atoms by `Compute` with the facts' values then
   `Subst` back with each fact's equation reversed), Decide (deny > allow with a condition > ask > default deny, fail
-  closed), Facts / Store effects (Store.Memory with windows), Tests (a policy's `test` blocks). An allow with no
+  closed), Facts / States effects (States.Memory with windows), Tests (a file of its own: `tests for <policy>`, `Types.tests`, `Tests.run(policy, text)`); external facts:
+  `Source`s by the name a fact's `from` gives, `Facts.from` asks them in parallel, with a timeout, fail closed —
+  answers only of the source's own facts, of their sorts (the effect of state is `States`: okay-scala has a `Store`). An allow with no
   condition allows every call; `count` (decides nothing) makes its updates for calls that go ahead. Text tests
   `starts`/`ends`/`contains` are the kernel's `take`/`takeRight`/`indexOf` (added 2026-10-25, by code points — and in
   okay-lean's Check/Arith.lean, commit 55f4bf1; DifferentialSuite has their certificates: 856, all agreed). Decision

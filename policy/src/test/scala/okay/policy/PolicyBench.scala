@@ -22,8 +22,8 @@ object PolicyBench:
       "currency" -> Value.T("usd")))
     val facts = Map(FactRef("owns", List(ann, acc1)) -> Answer.Holds(true),
       FactRef("balance", List(acc1)) -> Answer.Is(Value.D(BigDecimal("900.00"))))
-    val store = Store.Memory(policy.checked, () => 0L)
-    type Row[X] = (Store + Facts)[X]
+    val store = States.Memory(policy.checked, () => 0L)
+    type Row[X] = (States + Facts)[X]
     def decide = run(store.handler(Facts.known(facts)(Decide[Row](policy, call))))
     println(s"the decision: $decide, its proof's certificate ${decide.certificate.get.length} bytes")
     time("a DECISION: allow, facts asked, rules evaluated, proved", 200_000)(decide)

@@ -26,7 +26,7 @@ class TypesSuite extends munit.FunSuite:
     assertEquals(c.rulesOf("stripe.refund").map(_.verdict), List(Verdict.Deny, Verdict.Allow))
     assertEquals(c.countsOf("stripe.refund").size, 1)
     assertEquals(c.states("spent").init, Value.D(BigDecimal("0.00")))
-    val t = c.tests.head
+    val t = Types.tests(c, Examples.paymentsTests).fold(ps => fail(ps.mkString("\n")), identity).head
     assertEquals(t.caller, Value.E("User", "ann"))
     assertEquals(t.args("amount"), Value.D(BigDecimal("50.00")))
     assertEquals(t.givens.head, TGiven("owns", List(Value.E("User", "ann"), Value.E("Account", "acc1")), Left(true)))
@@ -90,7 +90,7 @@ class TypesSuite extends munit.FunSuite:
   }
 
   test("tests: unknown tools, arguments, facts; missing arguments") {
-    def t(s: String) = problems(s"test \"t\"\n  $s")
+    def t(s: String) = Types.tests(ok(""), s"tests for p\ntest \"t\"\n  $s").left.toOption.toList.flatten.map(_.message)
     assertEquals(t("given owns(ann, acc1) when ann calls send(amount: 1) expect allow"), List("an unknown tool send"))
     assertEquals(t("given owns(ann, acc1) when ann calls pay(account: acc1, amount: 1, currency: \"usd\", x: 1) expect allow"),
       List("pay has no argument x"))
@@ -100,6 +100,10 @@ class TypesSuite extends munit.FunSuite:
       List("an unknown relation fact owes"))
     assertEquals(t("given spent(ann) = \"x\" when ann calls refund(payment: \"p\") expect allow"),
       List("expected Dec, found Text"))
+  }
+
+  test("a file of tests for another policy") {
+    assertEquals(Types.tests(ok(""), "tests for q").left.map(_.map(_.message)), Left(List("tests for q, not for p")))
   }
 
   test("problems sorted by place, several at once") {

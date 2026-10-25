@@ -12,8 +12,8 @@ class SpeedSuite extends munit.FunSuite:
       "currency" -> Value.T("usd")))
     val facts = Map(FactRef("owns", List(ann, acc1)) -> Answer.Holds(true),
       FactRef("balance", List(acc1)) -> Answer.Is(Value.D(BigDecimal("900.00"))))
-    val store = Store.Memory(policy.checked, () => 0L)
-    type Row[X] = (Store + Facts)[X]
+    val store = States.Memory(policy.checked, () => 0L)
+    type Row[X] = (States + Facts)[X]
     def decide = run(store.handler(Facts.known(facts)(Decide[Row](policy, call))))
     for _ <- 1 to 20_000 do decide
     val n = 20_000

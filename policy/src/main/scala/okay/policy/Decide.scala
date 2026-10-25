@@ -27,12 +27,12 @@ object Compiled:
   def apply(text: String): Either[List[Problem], Compiled] = Types(text).map(new Compiled(_))
 
 /**
- * DECIDING A CALL: the facts and states its candidate rules read, asked at once (`Facts`, `Store`); each rule
+ * DECIDING A CALL: the facts and states its candidate rules read, asked at once (`Facts`, `States`); each rule
  * evaluated; the verdict by precedence — a deny, then an allow with a condition, then an ask, else the default deny;
  * the winning rule's decision proved by the kernel. A rule whose proof the kernel refuses does not apply: fail closed.
  */
 object Decide:
-  def apply[R[_]](policy: Compiled, call: Call)(using In[Facts, R], In[Store, R]): Decision ! R =
+  def apply[R[_]](policy: Compiled, call: Call)(using In[Facts, R], In[States, R]): Decision ! R =
     policy.checked.rulesOf.get(call.tool) match
       case None => pure(Decision(Verdict.Deny, Nil, None, List(s"no rule decides ${call.tool}"), Nil))
       case Some(rules) =>
@@ -46,7 +46,7 @@ object Decide:
         val (states, facts) = needed.partition(_._1)
         for
           fs <- Facts.ask[R](facts.map(_._2))
-          ss <- Store.read[R](states.map(_._2))
+          ss <- States.read[R](states.map(_._2))
         yield decide(policy, call, rules, counts, Known(fs, ss))
 
   /** the decision, with what is known */
@@ -86,10 +86,10 @@ object Decide:
     Eval.value(u.value, env, known).map(StateChange(Eval.ref(u.state, u.key, env), u.change, _))
 
   /** decided, and its changes made if allowed: what a guard does for a call */
-  def enforce[R[_]](policy: Compiled, call: Call)(using In[Facts, R], In[Store, R]): Decision ! R =
-    apply[R](policy, call).flatMap(d => (if d.verdict == Verdict.Allow then Store.update[R](d.updates) else unit[R])
+  def enforce[R[_]](policy: Compiled, call: Call)(using In[Facts, R], In[States, R]): Decision ! R =
+    apply[R](policy, call).flatMap(d => (if d.verdict == Verdict.Allow then States.update[R](d.updates) else unit[R])
       .as(d))
 
   /** an asked call approved by a human: its changes made */
-  def approve[R[_]](d: Decision)(using In[Store, R]): Unit ! R =
-    if d.verdict == Verdict.Ask then Store.update[R](d.updates) else unit[R]
+  def approve[R[_]](d: Decision)(using In[States, R]): Unit ! R =
+    if d.verdict == Verdict.Ask then States.update[R](d.updates) else unit[R]

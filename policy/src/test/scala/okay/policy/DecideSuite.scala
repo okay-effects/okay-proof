@@ -16,12 +16,12 @@ class DecideSuite extends munit.FunSuite:
     FactRef("owns", List(ann, acc1)) -> Answer.Holds(true),
     FactRef("balance", List(acc1)) -> Answer.Is(Value.D(BigDecimal("900.00"))))
 
-  type Row[X] = (Store + Facts)[X]
-  def decide(call: Call, facts: Map[FactRef, Answer] = known, store: Store.Memory = Store.Memory(policy.checked)) =
+  type Row[X] = (States + Facts)[X]
+  def decide(call: Call, facts: Map[FactRef, Answer] = known, store: States.Memory = States.Memory(policy.checked)) =
     run(store.handler(Facts.known(facts)(Decide.enforce[Row](policy, call))))
 
   test("the spec's tests pass") {
-    val outcomes = Tests.run(policy)
+    val outcomes = Tests.run(policy, Examples.paymentsTests).fold(ps => fail(ps.mkString("\n")), identity)
     assert(outcomes.forall(_.passed), outcomes.mkString("\n"))
     assertEquals(outcomes.size, 3)
   }
@@ -68,7 +68,7 @@ class DecideSuite extends munit.FunSuite:
   }
 
   test("STATE: spent and counted by allowed calls; a budget runs out; asked calls change nothing until approved") {
-    val store = Store.Memory(policy.checked)
+    val store = States.Memory(policy.checked)
     for _ <- 1 to 4 do assertEquals(decide(pay("500.00"), store = store).verdict, Verdict.Allow)
     assertEquals(store.get(FactRef("spent", List(ann))), Value.D(BigDecimal("2000.00")))
     assertEquals(store.get(FactRef("calls", List(ann))), Value.I(4))
@@ -79,7 +79,7 @@ class DecideSuite extends munit.FunSuite:
 
   test("a window: the day's spending starts again the next day") {
     var now = 0L
-    val store = Store.Memory(policy.checked, () => now)
+    val store = States.Memory(policy.checked, () => now)
     for _ <- 1 to 4 do decide(pay("500.00"), store = store)
     assertEquals(decide(pay("1.00"), store = store).verdict, Verdict.Ask)
     now = 86_400_000L
@@ -87,7 +87,7 @@ class DecideSuite extends munit.FunSuite:
   }
 
   test("DENY over everything: too many calls in a minute") {
-    val store = Store.Memory(policy.checked, () => 0L)
+    val store = States.Memory(policy.checked, () => 0L)
     store.set(FactRef("calls", List(ann)), Value.I(60))
     val d = decide(pay("1.00"), store = store)
     assertEquals(d.verdict, Verdict.Deny)
@@ -104,11 +104,11 @@ class DecideSuite extends munit.FunSuite:
       |allow op when not (banned(caller) or level(caller) < 3) and not (n > 10)
       |""".stripMargin).fold(ps => fail(ps.mkString), identity)
     val facts = Map(FactRef("banned", List(ann)) -> Answer.Holds(false), FactRef("level", List(ann)) -> Answer.Is(Value.I(5)))
-    val d = run(Store.Memory(p.checked).handler(Facts.known(facts)(Decide[Row](p, Call("op", ann, Map("n" -> Value.I(4)))))))
+    val d = run(States.Memory(p.checked).handler(Facts.known(facts)(Decide[Row](p, Call("op", ann, Map("n" -> Value.I(4)))))))
     assertEquals(d.verdict, Verdict.Allow)
     assert(d.facts.map(_.toString).exists(_.startsWith("¬banned(ann)")), d.facts.toString)
     val low = facts.updated(FactRef("level", List(ann)), Answer.Is(Value.I(2)))
-    assertEquals(run(Store.Memory(p.checked).handler(Facts.known(low)(
+    assertEquals(run(States.Memory(p.checked).handler(Facts.known(low)(
       Decide[Row](p, Call("op", ann, Map("n" -> Value.I(4))))))).verdict, Verdict.Deny)
   }
 
@@ -138,11 +138,11 @@ class DecideSuite extends munit.FunSuite:
 
   def file(tool: String, path: String) = Call(tool, ann, Map("path" -> Value.T(path)))
   val home = Map(FactRef("home", List(ann)) -> Answer.Is(Value.T("/ws/ann/")))
-  def onFiles(call: Call, store: Store.Memory) =
+  def onFiles(call: Call, store: States.Memory) =
     run(store.handler(Facts.known(home)(Decide.enforce[Row](files, call))))
 
   test("an allow with no condition allows, proved; text tests proved with a fact in them") {
-    val store = Store.Memory(files.checked, () => 0L)
+    val store = States.Memory(files.checked, () => 0L)
     val read = onFiles(file("fs.read", "/etc/passwd"), store)
     assertEquals(read.verdict, Verdict.Allow)
     assertEquals(read.theorem.get.concl.toString, "allow:fs.read(ann, \"/etc/passwd\")")
@@ -155,7 +155,7 @@ class DecideSuite extends munit.FunSuite:
   }
 
   test("COUNT: what goes ahead is counted — an allow at once, an ask when approved, a deny never") {
-    val store = Store.Memory(files.checked, () => 0L)
+    val store = States.Memory(files.checked, () => 0L)
     val writes = FactRef("writes", List(ann))
     onFiles(file("fs.write", "/ws/ann/a"), store)
     onFiles(file("fs.write", "/ws/ann/b"), store)
@@ -163,7 +163,7 @@ class DecideSuite extends munit.FunSuite:
     val asked = onFiles(file("fs.write", "/ws/ann/c"), store) // writes(ann) < 2 fails: asked
     assertEquals(asked.verdict, Verdict.Ask)
     assertEquals(store.get(writes), Value.I(2))
-    run(store.handler(Decide.approve[Store](asked)))
+    run(store.handler(Decide.approve[States](asked)))
     assertEquals(store.get(writes), Value.I(3))
     onFiles(file("fs.write", "/ws/ann/.env"), store)
     assertEquals(store.get(writes), Value.I(3))

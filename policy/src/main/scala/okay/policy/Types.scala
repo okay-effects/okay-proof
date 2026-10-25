@@ -74,7 +74,7 @@ final case class TTest(name: String, givens: List[TGiven], caller: Value, tool: 
 /** A POLICY CHECKED: its signatures, and its rules and tests over them — what the evaluator runs */
 final case class Checked(policy: Policy, types: Set[String], facts: Map[String, FactSig],
                          states: Map[String, StateSig], calls: Map[String, CallSig], rules: List[TRule],
-                         counts: List[TCount], tests: List[TTest]):
+                         counts: List[TCount]):
   /** the rules deciding `tool`, in the policy's order */
   lazy val rulesOf: Map[String, List[TRule]] = calls.keys.map(t => t -> rules.filter(_.tools.contains(t))).toMap
   /** the counts of `tool`'s calls */
@@ -99,6 +99,13 @@ object Types:
 
   /** the text parsed and checked: the parser's problem, or the checker's */
   def apply(text: String): Either[List[Problem], Checked] = Parser.parse(text).left.map(List(_)).flatMap(check)
+
+  /** a file of tests checked against its policy: its tests, or every problem */
+  def tests(c: Checked, f: TestFile): Either[List[Problem], List[TTest]] = Checking(c.policy).tests(c, f)
+
+  /** a file of tests' text, parsed and checked against the policy */
+  def tests(c: Checked, text: String): Either[List[Problem], List[TTest]] =
+    Parser.parseTests(text).left.map(List(_)).flatMap(tests(c, _))
 
   private final class Checking(p: Policy):
     private val problems = ArrayBuffer.empty[Problem]
@@ -136,9 +143,15 @@ object Types:
       val sigs = Sigs(facts, states, calls)
       val rules = p.rules.zipWithIndex.flatMap((r, i) => rule(r, i, sigs))
       val counts = p.counts.flatMap(count(_, sigs))
-      val tests = p.tests.flatMap(test(_, sigs))
-      if problems.isEmpty then Right(Checked(p, types, facts, states, calls, rules, counts, tests))
+      if problems.isEmpty then Right(Checked(p, types, facts, states, calls, rules, counts))
       else Left(problems.toList.sortBy(q => (q.pos.line, q.pos.col)))
+
+    def tests(c: Checked, f: TestFile): Either[List[Problem], List[TTest]] =
+      if f.policy != c.policy.name then problem(f.pos, s"tests for ${f.policy}, not for ${c.policy.name}")
+      val sigs = Sigs(c.facts, c.states, c.calls)
+      duplicates(f.tests.map(t => (t.name, t.pos)), "test")
+      val out = f.tests.flatMap(test(_, sigs))
+      if problems.isEmpty then Right(out) else Left(problems.toList.sortBy(q => (q.pos.line, q.pos.col)))
 
     private def duplicates(names: List[(String, Pos)], what: String): Unit =
       names.groupBy(_._1).foreach((n, all) =>

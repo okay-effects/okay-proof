@@ -68,6 +68,12 @@ count * then calls(caller) += 1        -- what goes ahead is counted; a count de
 allow fs.read                          -- no condition: every call of the tool is allowed
 allow fs.write
   when path starts "/workspace/" and not (path ends ".env")
+```
+
+Its tests, in their own file, `payments.tests` — the policy says what is allowed; its tests, apart, show it:
+
+```text
+tests for payments
 
 test "a small payment is allowed"
   given owns(ann, acc1), role(ann) = "teller", balance(acc1) = 900.00, spent(ann) = 100.00
@@ -84,7 +90,8 @@ test "a payment over the limit of one is asked"
 
 ```text
 policy    ::= "policy" name decl*
-decl      ::= type | fact | state | call | rule | count | test
+decl      ::= type | fact | state | call | rule | count
+tests     ::= "tests" "for" name test*                        -- a file of its own, beside the policy
 type      ::= "type" Name                                   -- an entity sort: values are names (ann, acc1)
 fact      ::= "fact" name "(" params ")" (":" sort)? ("from" name)?
 state     ::= "state" name "(" params ")" ":" sort ("per" window)? "=" literal
@@ -175,14 +182,22 @@ used: what the audit shows.
 ```text
 enum Facts[X]:
   case Ask(fact: String, args: List[Value]) extends Facts[Option[Value]]     -- None: unknown
-enum Store[X]:
-  case Read(state: String, key: List[Value]) extends Store[Value]
-  case Update(changes: List[Change]) extends Store[Unit]                     -- all of a decision's, at once
+enum States[X]:
+  case Read(state: String, key: List[Value]) extends States[Value]
+  case Update(changes: List[Change]) extends States[Unit]                     -- all of a decision's, at once
 ```
 
-Handlers: the call's own facts; `Store` in memory, in a Durable Object, in a file; an external service's facts through
+Handlers: the call's own facts; `States` in memory, in a Durable Object, in a file; an external service's facts through
 `Async` (Stripe's balance) — asked only if a candidate rule needs them, all of a call's at once (`parTraverse`), each
-call's answers cached for the decision. A test's `given` is a handler in memory. A relation fact is true, false (then `¬r(...)`
+call's answers cached for the decision.
+
+EXTERNAL FACTS. A fact names its source (`fact balance(account: Account): Dec from stripe`); the guard registers a
+`Source` by that name — a program `List[FactRef] => Map[FactRef, Answer] ! Async`: an HTTP client (`Source.future`), a
+database, an MCP server's tool, a map (`Source.of`). `Facts.from(checked, sources, local, timeoutMs)` is the handler:
+the facts with no `from` are asked of `local` (the session, the call's context); each source is asked ALL of a
+decision's facts it is the source of, at once, and all sources in parallel, each within the timeout. Fail closed: a
+source missing (`Facts.missing` lists them when a policy is loaded), failing, or late answers nothing; an answer about
+a fact not of that source, or of the wrong kind or sort, is dropped. An unknown fact never allows. A test's `given` is a handler in memory. A relation fact is true, false (then `¬r(...)`
 is the hypothesis a `not` rests on) or unknown; an unknown fact makes its atom fail, with or without `not` — a rule
 needing it does not apply, so a missing fact can deny or ask, never allow. Windows (`per day`) are the store's:
 a value read after its window ended is the initial one.
@@ -213,8 +228,8 @@ save, and shows each decision's proof. The module has no JVM-only code; the JVM-
 2. Type checker with every error above — `PolicyTypesSuite`.
 3. Translation to a `Theory`; evaluator; proof building; decisions — `DecideSuite` (each verdict, the default, a
    refused forged proof, the hypotheses exactly the facts used).
-4. Effects: `Facts`, `Store`, windows, updates; async external facts — `FactsSuite`.
-5. `test` blocks run — `policy test file.policy` and in the studio.
+4. Effects: `Facts`, `States`, windows, updates; async external facts — `FactsSuite`.
+5. tests, in their own file (`tests for <policy>`), run — `policy test` and in the studio.
 6. Speed: `PolicyBench`; the JVM and Scala.js.
 7. Later: tools imported from an MCP server's schema; arguments rewritten (`then set amount = ...`); compilation to
    Scala.
