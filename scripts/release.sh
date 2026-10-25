@@ -11,7 +11,7 @@ pages=$(mktemp -d)/pages
 git fetch -q origin gh-pages
 git worktree add -q "$pages" origin/gh-pages
 rsync -a target/pages-maven/ "$pages/maven/"
-(cd "$pages" && git add -A && (git commit -qm "release $version" || true) && git push -q origin gh-pages)
+(cd "$pages" && git add -A && (git commit -qm "release $version" || true) && git push -q origin HEAD:gh-pages)
 git worktree remove --force "$pages"
 git tag -f "v$version" && git push -q origin master && git push -qf origin "v$version"
 rm -rf ~/Library/Caches/Coursier/v1/https/okay-effects.github.io/okay-proof
