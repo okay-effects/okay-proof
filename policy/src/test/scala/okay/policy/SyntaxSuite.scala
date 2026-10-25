@@ -77,3 +77,10 @@ class SyntaxSuite extends munit.FunSuite:
     val tests = "tests for p\ntest \"t\"\n  given x(a)\n  when ann calls \"list-files\"(path: \"/ws/a\")\n  expect allow\n"
     assertEquals(Parser.parseTests(tests).map(_.tests.head.tool), Right("list-files"))
   }
+
+  test("a test with no given: a call alone") {
+    val f = Parser.parseTests("tests for p\ntest \"t\"\n  when ann calls tool(x: 1)\n  expect deny\n").toOption.get
+    assertEquals(f.tests.head.givens, Nil)
+    assertEquals(Printer(Parser.parseTests(Printer(f)).toOption.get), Printer(f))
+  }
+

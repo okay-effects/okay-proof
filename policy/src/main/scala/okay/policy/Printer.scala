@@ -26,7 +26,8 @@ object Printer:
     case Decl.Count(target, when, updates, _) =>
       s"count ${targetWord(target)}" + when.fold("")(c => s"\n  when ${cond(c)}") + updates.map(update).mkString("\n  then ", ", ", "")
     case Decl.Test(n, givens, caller, tool, args, expect, because, _) =>
-      s"test ${quote(n)}\n  given ${givens.map(givenText).mkString(", ")}\n  when $caller calls ${toolName(tool)}(" +
+      s"test ${quote(n)}" + (if givens.isEmpty then "" else s"\n  given ${givens.map(givenText).mkString(", ")}") +
+        s"\n  when $caller calls ${toolName(tool)}(" +
         args.map(a => s"${a.name}: ${expr(a.value)}").mkString(", ") + s")\n  expect ${expect.word}" +
         because.fold("")(b => s" ${quote(b)}")
 

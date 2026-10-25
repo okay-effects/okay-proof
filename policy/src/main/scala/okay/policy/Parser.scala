@@ -299,9 +299,10 @@ object Parser:
     private def test(p: Pos): Decl.Test =
       next()
       val n = text("the test's name, in quotes")
-      word("given")
-      val givens = ArrayBuffer(fact())
-      while acceptSym(",") do givens += fact()
+      val givens = ArrayBuffer.empty[Given]
+      if acceptWord("given") then
+        givens += fact()
+        while acceptSym(",") do givens += fact()
       word("when")
       val (caller, _) = name("who calls")
       word("calls")

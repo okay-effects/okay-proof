@@ -110,7 +110,7 @@ cmp       ::= "=" | "!=" | "<" | "<=" | ">" | ">="
 expr      ::= expr ("+" | "-") expr | expr "*" literal | "(" expr ")" | literal | var | name "(" exprs ")"
 update    ::= name "(" exprs ")" ("=" | "+=" | "-=") expr
 window    ::= "minute" | "hour" | "day"
-test      ::= "test" text "given" given ("," given)* "when" name "calls" tool "(" args ")" "expect" verdict text?
+test      ::= "test" text ("given" given ("," given)*)? "when" name "calls" tool "(" args ")" "expect" verdict text?
 sort      ::= "Int" | "Dec" | "Text" | "Bool" | Name | "List" "[" sort "]"     -- Bool: arguments' and fields' only
 literal   ::= int | dec | text
 ```
