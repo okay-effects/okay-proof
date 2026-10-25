@@ -91,7 +91,7 @@ private object Lexer:
 /** THE PARSER: the text to a `Policy`, or the first problem, with its place. Recursive descent; newlines mean nothing
  * — a declaration begins with its keyword */
 object Parser:
-  private val declWords = Set("type", "fact", "state", "call", "allow", "ask", "deny", "test")
+  private val declWords = Set("type", "fact", "state", "call", "allow", "ask", "deny", "count", "test")
   /** the words no name may be; the others (`from`, `per`, `given`, `calls`, `expect`) are keywords only where they
    * stand, so a state may be called `calls` */
   private val keywords = declWords ++ Set("policy", "when", "then", "because", "and", "or", "not", "in")
@@ -174,8 +174,16 @@ object Parser:
         val (tool, _) = name("a tool's name")
         Decl.Call(tool, params(), p)
       case Tok.Name("allow" | "ask" | "deny", p) => rule(p)
+      case Tok.Name("count", p) =>
+        next()
+        val target = this.target()
+        val when = if acceptWord("when") then Some(cond()) else None
+        word("then")
+        val updates = ArrayBuffer(update())
+        while acceptSym(",") do updates += update()
+        Decl.Count(target, when, updates.toList, p)
       case Tok.Name("test", p) => test(p)
-      case _ => expected("a declaration: type, fact, state, call, allow, ask, deny or test")
+      case _ => expected("a declaration: type, fact, state, call, allow, ask, deny, count or test")
 
     private def window(): Window = peek match
       case Tok.Name("minute", _) => next(); Window.Minute
@@ -209,11 +217,7 @@ object Parser:
         case Tok.Name("allow", _) => Verdict.Allow
         case Tok.Name("ask", _) => Verdict.Ask
         case _ => Verdict.Deny
-      val target =
-        if acceptSym("*") then Target.Any
-        else
-          val (n, _) = name("a tool, a server's `name.*`, or `*`")
-          if acceptSym(".*") then Target.Server(n) else Target.Tool(n)
+      val target = this.target()
       val when = if acceptWord("when") then Some(cond()) else None
       val updates = ArrayBuffer.empty[Update]
       if acceptWord("then") then
@@ -221,6 +225,12 @@ object Parser:
         while acceptSym(",") do updates += update()
       val because = if acceptWord("because") then Some(text("a reason, in quotes")) else None
       Decl.Rule(verdict, target, when, updates.toList, because, p)
+
+    private def target(): Target =
+      if acceptSym("*") then Target.Any
+      else
+        val (n, _) = name("a tool, a server's `name.*`, or `*`")
+        if acceptSym(".*") then Target.Server(n) else Target.Tool(n)
 
     private def update(): Update =
       val (n, p) = name("a state to change")
@@ -317,7 +327,7 @@ object Parser:
 
     private def isComparison: Boolean = peek match
       case Tok.Sym("=" | "!=" | "<" | "<=" | ">" | ">=" | "+" | "-" | "*", _) => true
-      case Tok.Name("in", _) => true
+      case Tok.Name("in" | "starts" | "ends" | "contains", _) => true
       case _ => false
 
     private def atom(): Cond =
@@ -333,6 +343,13 @@ object Parser:
             case ">" => Cmp.Gt
             case _ => Cmp.Ge
           Cond.Compare(a, cmp, expr(), p)
+        case Tok.Name(w @ ("starts" | "ends" | "contains"), p) =>
+          next()
+          val op = w match
+            case "starts" => TextOp.Starts
+            case "ends" => TextOp.Ends
+            case _ => TextOp.Contains
+          Cond.Text(a, op, expr(), p)
         case Tok.Name("in", p) =>
           next()
           sym("[")
@@ -342,7 +359,7 @@ object Parser:
           Cond.In(a, options.toList, p)
         case _ => a match
           case Expr.Apply(n, as, p) => Cond.Holds(n, as, p)
-          case _ => expected("a comparison (=, !=, <, <=, >, >=) or 'in'")
+          case _ => expected("a comparison (=, !=, <, <=, >, >=), 'in', or a text test (starts, ends, contains)")
 
     // EXPRESSIONS: + and - < * < an atom
 

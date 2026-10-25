@@ -36,7 +36,7 @@ object Examples:
       |  when calls(caller) >= 60
       |  because "too many calls"
       |
-      |allow * then calls(caller) += 1        -- counts every allowed call
+      |count * then calls(caller) += 1        -- every call that goes ahead
       |
       |allow stripe.refund when role(caller) = "teller"
       |

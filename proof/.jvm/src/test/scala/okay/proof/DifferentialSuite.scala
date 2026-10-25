@@ -72,7 +72,22 @@ object Corpus:
     val unfold = ok(ks, ImpE(ok(ks, AllE(ok(ks, Axiom("sumS")), x)), ok(ks, AndE1(h))))
     val next = get(Linarith.decide(ks, Le(I(0), sum(add(x, I(1)))), Nil, List(ok(ks, AndE1(h)), ok(ks, AndE2(h)), unfold))).get
     val induction = ok(ks, Induct(x, f, base, ok(ks, AllI(x, ok(ks, ImpI(hyp, next))))))
-    policies ++ arithmetic ++ strips ++ lemmas.all ++ schemas ++ List("ex falso" -> exFalso, "induction" -> induction)
+    // texts by characters: an emoji is one, as Lean counts; take and takeRight past either end; indexOf
+    val path = S("/ws/a\uD83D\uDE00b.txt")
+    def text(name: String, f: Formula) = name -> ok(k, Compute(f))
+    val texts = List(
+      text("take", Eq(Ap(Fns.take, List(path, I(4))), S("/ws/"))),
+      text("take past the emoji", Eq(Ap(Fns.take, List(path, I(6))), S("/ws/a\uD83D\uDE00"))),
+      text("takeRight", Eq(Ap(Fns.takeRight, List(path, I(4))), S(".txt"))),
+      text("take below 0", Eq(Ap(Fns.take, List(S("ab"), I(-3))), S(""))),
+      text("takeRight past the start", Eq(Ap(Fns.takeRight, List(S("ab"), I(9))), S("ab"))),
+      text("indexOf", Eq(Ap(Fns.indexOf, List(path, S("b.t"))), I(6))),
+      text("indexOf nowhere", Eq(Ap(Fns.indexOf, List(path, S("zz"))), I(-1))),
+      text("indexOf the empty", Eq(Ap(Fns.indexOf, List(path, S(""))), I(0))),
+      text("not a prefix", Not(Eq(Ap(Fns.take, List(path, I(4))), S("/etc")))),
+      text("contains", Le(I(0), Ap(Fns.indexOf, List(path, S("a\uD83D\uDE00"))))))
+    policies ++ arithmetic ++ strips ++ lemmas.all ++ schemas ++ texts ++
+      List("ex falso" -> exFalso, "induction" -> induction)
 
 /** okay-lean's checker against this kernel: every certificate and its mutants, the same verdict from both */
 class DifferentialSuite extends munit.FunSuite:

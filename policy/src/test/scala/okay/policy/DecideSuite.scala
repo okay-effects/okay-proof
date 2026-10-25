@@ -121,3 +121,52 @@ class DecideSuite extends munit.FunSuite:
     val ok = run(okay.proof.Infer.by(policy.kernel)(policy.prove.decision[okay.proof.Infer](allow, pay("60.00"), k)))
     assert(ok.isRight, ok.toString)
   }
+
+  val files = Compiled("""policy files
+    |type User
+    |fact home(user: User): Text
+    |state writes(user: User): Int per hour = 0
+    |call fs.read(path: Text)
+    |call fs.write(path: Text)
+    |allow fs.read
+    |allow fs.write
+    |  when path starts home(caller) and not (path ends ".env") and not (path contains "/../") and writes(caller) < 2
+    |ask fs.write when path starts home(caller) because "too many writes"
+    |deny fs.write when path ends ".env" because "secrets"
+    |count fs.write then writes(caller) += 1
+    |""".stripMargin).fold(ps => fail(ps.mkString("\n")), identity)
+
+  def file(tool: String, path: String) = Call(tool, ann, Map("path" -> Value.T(path)))
+  val home = Map(FactRef("home", List(ann)) -> Answer.Is(Value.T("/ws/ann/")))
+  def onFiles(call: Call, store: Store.Memory) =
+    run(store.handler(Facts.known(home)(Decide.enforce[Row](files, call))))
+
+  test("an allow with no condition allows, proved; text tests proved with a fact in them") {
+    val store = Store.Memory(files.checked, () => 0L)
+    val read = onFiles(file("fs.read", "/etc/passwd"), store)
+    assertEquals(read.verdict, Verdict.Allow)
+    assertEquals(read.theorem.get.concl.toString, "allow:fs.read(ann, \"/etc/passwd\")")
+    val write = onFiles(file("fs.write", "/ws/ann/notes.md"), store)
+    assertEquals(write.verdict, Verdict.Allow)
+    assert(write.facts.map(_.toString).exists(_.startsWith("home(ann)")), write.facts.toString)
+    assertEquals(onFiles(file("fs.write", "/ws/bob/notes.md"), store).verdict, Verdict.Deny)
+    assertEquals(onFiles(file("fs.write", "/ws/ann/../bob/x"), store).verdict, Verdict.Ask)
+    assertEquals(onFiles(file("fs.write", "/ws/ann/.env"), store).reasons, List("secrets"))
+  }
+
+  test("COUNT: what goes ahead is counted — an allow at once, an ask when approved, a deny never") {
+    val store = Store.Memory(files.checked, () => 0L)
+    val writes = FactRef("writes", List(ann))
+    onFiles(file("fs.write", "/ws/ann/a"), store)
+    onFiles(file("fs.write", "/ws/ann/b"), store)
+    assertEquals(store.get(writes), Value.I(2))
+    val asked = onFiles(file("fs.write", "/ws/ann/c"), store) // writes(ann) < 2 fails: asked
+    assertEquals(asked.verdict, Verdict.Ask)
+    assertEquals(store.get(writes), Value.I(2))
+    run(store.handler(Decide.approve[Store](asked)))
+    assertEquals(store.get(writes), Value.I(3))
+    onFiles(file("fs.write", "/ws/ann/.env"), store)
+    assertEquals(store.get(writes), Value.I(3))
+    onFiles(file("fs.read", "/x"), store) // the count is of fs.write only
+    assertEquals(store.get(writes), Value.I(3))
+  }

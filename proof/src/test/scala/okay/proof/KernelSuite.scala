@@ -43,6 +43,24 @@ class KernelSuite extends munit.FunSuite:
     assert(k.derive(Compute(Eq(Ap(Fns.mod, List(I(-7), I(2))), I(1)))).isRight)
   }
 
+  test("texts: take, takeRight, indexOf by characters (code points, as Lean's); wrong values and sorts refused") {
+    def is(t: Term, v: Term) = assert(k.derive(Compute(Eq(t, v))).isRight, s"$t is not $v")
+    def isNot(t: Term, v: Term) = refused(Compute(Eq(t, v)), "computed false")
+    val path = S("/ws/a\uD83D\uDE00b.txt")
+    is(Ap(Fns.take, List(path, I(4))), S("/ws/"))
+    is(Ap(Fns.take, List(path, I(6))), S("/ws/a\uD83D\uDE00")) // the emoji one character, not two
+    is(Ap(Fns.takeRight, List(path, I(4))), S(".txt"))
+    is(Ap(Fns.take, List(S("ab"), I(-1))), S(""))
+    is(Ap(Fns.take, List(S("ab"), I(9))), S("ab"))
+    is(Ap(Fns.takeRight, List(S("ab"), I(9))), S("ab"))
+    is(Ap(Fns.indexOf, List(path, S("b.t"))), I(6))
+    is(Ap(Fns.indexOf, List(S("abc"), S(""))), I(0))
+    is(Ap(Fns.indexOf, List(S("abc"), S("x"))), I(-1))
+    isNot(Ap(Fns.take, List(path, I(4))), S("/ws"))
+    isNot(Ap(Fns.indexOf, List(path, S("b.t"))), I(7)) // by characters: 7 would be by UTF-16 units
+    refused(Compute(Eq(Ap(Fns.take, List(I(1), I(4))), S(""))), "not closed and well-sorted")
+  }
+
   test("∀ in: refused while the variable is free in a hypothesis; ∀ out: no capture") {
     val h = ok(Assume(Le(x, x)))
     refused(AllI(x, h), "free in a hypothesis")

@@ -48,6 +48,7 @@ object Eval:
     case TCond.Compare(a, _, b) => refs(a, env) ++ refs(b, env)
     case TCond.In(a, os) => refs(a, env) ++ os.flatMap(refs(_, env))
     case TCond.Holds(n, as) => List(false -> ref(n, as, env))
+    case TCond.Text(a, _, b) => refs(a, env) ++ refs(b, env)
     case TCond.And(a, b) => refs(a, env) ++ refs(b, env)
     case TCond.Or(a, b) => refs(a, env) ++ refs(b, env)
     case TCond.Not(a) => refs(a, env)
@@ -97,6 +98,11 @@ object Eval:
     case TCond.Holds(n, as) => known.facts.get(ref(n, as, env)) match
       case Some(Answer.Holds(t)) => Some(t)
       case _ => None
+    case TCond.Text(a, op, b) =>
+      for case Value.T(x) <- value(a, env, known); case Value.T(y) <- value(b, env, known) yield op match
+        case TextOp.Starts => x.startsWith(y)
+        case TextOp.Ends => x.endsWith(y)
+        case TextOp.Contains => x.contains(y)
     case TCond.And(a, b) => (holds(a, env, known), holds(b, env, known)) match
       case (Some(false), _) | (_, Some(false)) => Some(false)
       case (Some(true), Some(true)) => Some(true)
@@ -124,6 +130,7 @@ object Eval:
     case TCond.Compare(a, cmp, b) => s"${show(a, env, known)} ${cmp.text} ${show(b, env, known)}"
     case TCond.In(a, os) => s"${show(a, env, known)} in [${os.map(show(_, env, known)).mkString(", ")}]"
     case TCond.Holds(n, as) => ref(n, as, env).toString
+    case TCond.Text(a, op, b) => s"${show(a, env, known)} ${op.word} ${show(b, env, known)}"
     case TCond.And(a, b) => s"${show(a, env, known)} and ${show(b, env, known)}"
     case TCond.Or(a, b) => s"(${show(a, env, known)} or ${show(b, env, known)})"
     case TCond.Not(a) => s"not ${show(a, env, known)}"

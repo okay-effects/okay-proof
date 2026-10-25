@@ -281,7 +281,14 @@ object Fns:
   val roundHalfUp = Fn("roundHalfUp", List(Dec, Int), Dec)
   val concat = Fn("++", List(Str, Str), Str)
   val length = Fn("length", List(Str), Int)
-  val all: Set[Fn] = Set(add, sub, mul, neg, div, mod, dec, dadd, dsub, dmul, ddiv, round, roundHalfUp, concat, length)
+  /** the first `n` characters (code points, as Lean's), all if fewer, none if `n` < 0 */
+  val take = Fn("take", List(Str, Int), Str)
+  /** the last `n` characters, likewise */
+  val takeRight = Fn("takeRight", List(Str, Int), Str)
+  /** where `p` first stands in `a`, in characters from 0; -1 if nowhere; 0 for the empty text */
+  val indexOf = Fn("indexOf", List(Str, Str), Int)
+  val all: Set[Fn] = Set(add, sub, mul, neg, div, mod, dec, dadd, dsub, dmul, ddiv, round, roundHalfUp, concat, length,
+    take, takeRight, indexOf)
 
 /** THE INTRINSIC ARITHMETIC: a closed formula of the kernel's own functions, evaluated; `None` where it cannot be —
  * a symbol of one's own, a quantifier, division by zero, a scale out of range */
@@ -319,7 +326,29 @@ object Arithmetic:
     case ("roundHalfUp", List(a: JDec, s: BigInt)) => scale(s).map(a.setScale(_, RoundingMode.HALF_UP))
     case ("++", List(a: String, b: String)) => Some(a + b)
     case ("length", List(a: String)) => Some(BigInt(a.codePointCount(0, a.length)))
+    case ("take", List(a: String, n: BigInt)) =>
+      val cs = codePoints(a)
+      Some(text(cs.take(n.max(0).min(cs.length).toInt)))
+    case ("takeRight", List(a: String, n: BigInt)) =>
+      val cs = codePoints(a)
+      Some(text(cs.drop(cs.length - n.max(0).min(cs.length).toInt)))
+    case ("indexOf", List(a: String, p: String)) => Some(BigInt(codePoints(a).indexOfSlice(codePoints(p))))
     case _ => None
+
+  /** a text's characters: its code points, as Lean reads a string */
+  private def codePoints(a: String): Vector[Int] =
+    val b = Vector.newBuilder[Int]
+    var i = 0
+    while i < a.length do
+      val c = a.codePointAt(i)
+      b += c
+      i += Character.charCount(c)
+    b.result()
+
+  private def text(cs: Seq[Int]): String =
+    val b = java.lang.StringBuilder()
+    cs.foreach(c => b.append(Character.toChars(c)))
+    b.toString
 
   private def floorDiv(a: BigInt, b: BigInt): BigInt =
     val (q, r) = a /% b

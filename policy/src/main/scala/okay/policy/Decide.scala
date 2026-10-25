@@ -37,38 +37,39 @@ object Decide:
       case None => pure(Decision(Verdict.Deny, Nil, None, List(s"no rule decides ${call.tool}"), Nil))
       case Some(rules) =>
         val env = call.env
-        val needed = rules.flatMap(r =>
-          r.when.toList.flatMap(Eval.refs(_, env)) ++ r.updates.flatMap(u => u.key.flatMap(Eval.refs(_, env)) ++
-            Eval.refs(u.value, env) ++ List(true -> Eval.ref(u.state, u.key, env)))).distinct
+        val counts = policy.checked.countsOf.getOrElse(call.tool, Nil)
+        def read(when: Option[TCond], updates: List[TUpdate]) =
+          when.toList.flatMap(Eval.refs(_, env)) ++ updates.flatMap(u => u.key.flatMap(Eval.refs(_, env)) ++
+            Eval.refs(u.value, env) ++ List(true -> Eval.ref(u.state, u.key, env)))
+        val needed = (rules.flatMap(r => read(r.when, r.updates)) ++ counts.flatMap(c => read(c.when, c.updates)))
+          .distinct
         val (states, facts) = needed.partition(_._1)
         for
           fs <- Facts.ask[R](facts.map(_._2))
           ss <- Store.read[R](states.map(_._2))
-        yield decide(policy, call, rules, Known(fs, ss))
+        yield decide(policy, call, rules, counts, Known(fs, ss))
 
   /** the decision, with what is known */
-  def decide(policy: Compiled, call: Call, rules: List[TRule], known: Known): Decision =
+  def decide(policy: Compiled, call: Call, rules: List[TRule], counts: List[TCount], known: Known): Decision =
     val env = call.env
     def applies(r: TRule): Boolean = r.when.forall(c => Eval.holds(c, env, known).contains(true))
     def proved(r: TRule): Either[String, Thm] =
       run(Infer.by(policy.kernel)(policy.prove.decision[Infer](r, call, known)))
-    def first(v: Verdict, conditional: Boolean): Option[(TRule, Either[String, Thm])] =
-      rules.iterator.filter(r => r.verdict == v && (!conditional || r.when.isDefined) && applies(r))
-        .map(r => (r, proved(r))).find(_._2.isRight)
+    def first(v: Verdict): Option[(TRule, Either[String, Thm])] =
+      rules.iterator.filter(r => r.verdict == v && applies(r)).map(r => (r, proved(r))).find(_._2.isRight)
     def made(v: Verdict, r: TRule, thm: Thm): Decision =
-      val with_ = rules.filter(x => x.verdict == v && applies(x)) ++
-        (if v == Verdict.Allow || v == Verdict.Ask then rules.filter(x => x.verdict == Verdict.Allow && x.when.isEmpty)
-         else Nil)
-      val changes = with_.distinct.flatMap(_.updates.map(u => change(u, env, known)))
+      val with_ = rules.filter(x => x.verdict == v && applies(x))
+      val counted = if v == Verdict.Deny then Nil
+        else counts.filter(c => c.when.forall(w => Eval.holds(w, env, known).contains(true)))
+      val changes = (with_.flatMap(_.updates) ++ counted.flatMap(_.updates)).map(u => change(u, env, known))
       if changes.exists(_.isEmpty) then
         Decision(Verdict.Deny, Nil, None, List(s"an update's value is unknown, so the call is denied"), Nil)
-      else Decision(v, r :: with_.filterNot(_ eq r).filter(_.verdict == v), Some(thm),
-        with_.filter(_.verdict == v).flatMap(_.because).distinct, changes.flatten)
-    first(Verdict.Deny, conditional = false) match
+      else Decision(v, r :: with_.filterNot(_ eq r), Some(thm), with_.flatMap(_.because).distinct, changes.flatten)
+    first(Verdict.Deny) match
       case Some((r, Right(t))) => made(Verdict.Deny, r, t)
-      case _ => first(Verdict.Allow, conditional = true) match
+      case _ => first(Verdict.Allow) match
         case Some((r, Right(t))) => made(Verdict.Allow, r, t)
-        case _ => first(Verdict.Ask, conditional = false) match
+        case _ => first(Verdict.Ask) match
           case Some((r, Right(t))) => made(Verdict.Ask, r, t)
           case _ =>
             val why = rules.filter(_.when.isDefined).flatMap { r =>

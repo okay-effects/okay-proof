@@ -67,6 +67,12 @@ final class Theorize(val checked: Checked):
       val x = term(a)
       os.map(o => F.Eq(x, term(o)): Formula).reduceRight(F.Or(_, _))
     case TCond.Holds(n, as) => F.P(preds(n), as.map(term))
+    case TCond.Text(a, op, b) =>
+      val (x, y) = (term(a), term(b))
+      op match
+        case TextOp.Starts => F.Eq(Term.Ap(Fns.take, List(x, Term.Ap(Fns.length, List(y)))), y)
+        case TextOp.Ends => F.Eq(Term.Ap(Fns.takeRight, List(x, Term.Ap(Fns.length, List(y)))), y)
+        case TextOp.Contains => F.Le(Term.I(0), Term.Ap(Fns.indexOf, List(x, y)))
     case TCond.And(a, b) => F.And(formula(a), formula(b))
     case TCond.Or(a, b) => F.Or(formula(a), formula(b))
     case TCond.Not(a) => F.Not(formula(a))
@@ -75,18 +81,16 @@ final class Theorize(val checked: Checked):
   private def named(tool: String)(f: Formula): Formula = okay.proof.Logic.subst(f, Term.V("tool", okay.proof.Sort.Str),
     Term.S(tool))
 
-  /** a rule's axiom for one of its tools; none for an `allow` with no condition (it only counts) */
-  def axiom(r: TRule, tool: String): Option[(String, Formula)] =
+  /** a rule's axiom for one of its tools */
+  def axiom(r: TRule, tool: String): (String, Formula) =
     val head = F.P(verdict(r.verdict, tool), vars(tool))
     val body = r.when.map(c => named(tool)(formula(c)))
-    if r.when.isEmpty && r.verdict == Verdict.Allow then None
-    else Some(axiomName(r, tool) -> Formula.all(vars(tool)*)(body.fold(head)(_ implies head)))
+    axiomName(r, tool) -> Formula.all(vars(tool)*)(body.fold(head)(_ implies head))
 
   val theory: Theory = Theory(checked.policy.name, (for
     r <- checked.rules
     t <- r.tools
-    a <- axiom(r, t)
-  yield a)*)
+  yield axiom(r, t))*)
 
   /** the kernel of the policy: the only maker of its decisions */
   val kernel: Kernel = Kernel(theory)

@@ -17,6 +17,8 @@ object Printer:
         when.fold("")(c => s"\n  when ${cond(c)}") +
         (if updates.isEmpty then "" else updates.map(update).mkString("\n  then ", ", ", "")) +
         because.fold("")(b => s"\n  because ${quote(b)}")
+    case Decl.Count(target, when, updates, _) =>
+      s"count ${target.word}" + when.fold("")(c => s"\n  when ${cond(c)}") + updates.map(update).mkString("\n  then ", ", ", "")
     case Decl.Test(n, givens, caller, tool, args, expect, because, _) =>
       s"test ${quote(n)}\n  given ${givens.map(givenText).mkString(", ")}\n  when $caller calls $tool(" +
         args.map(a => s"${a.name}: ${expr(a.value)}").mkString(", ") + s")\n  expect ${expect.word}" +
@@ -48,6 +50,7 @@ object Printer:
     case Cond.Compare(a, cmp, b, _) => s"${expr(a)} ${cmp.text} ${expr(b)}"
     case Cond.In(a, os, _) => s"${expr(a)} in [${os.map(expr).mkString(", ")}]"
     case Cond.Holds(n, as, _) => s"$n(${as.map(expr).mkString(", ")})"
+    case Cond.Text(a, op, b, _) => s"${expr(a)} ${op.word} ${expr(b)}"
 
   private def tight(c: Cond): String = c match
     case _: Cond.Or => s"(${cond(c)})"

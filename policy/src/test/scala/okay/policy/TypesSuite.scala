@@ -22,9 +22,9 @@ class TypesSuite extends munit.FunSuite:
 
   test("the spec's example: checked, its rules on their tools, its tests read") {
     val c = Types(Examples.payments).fold(ps => fail(ps.mkString("\n")), identity)
-    assertEquals(c.rulesOf("stripe.create_payment").map(_.verdict),
-      List(Verdict.Allow, Verdict.Ask, Verdict.Deny, Verdict.Allow))
-    assertEquals(c.rulesOf("stripe.refund").map(_.verdict), List(Verdict.Deny, Verdict.Allow, Verdict.Allow))
+    assertEquals(c.rulesOf("stripe.create_payment").map(_.verdict), List(Verdict.Allow, Verdict.Ask, Verdict.Deny))
+    assertEquals(c.rulesOf("stripe.refund").map(_.verdict), List(Verdict.Deny, Verdict.Allow))
+    assertEquals(c.countsOf("stripe.refund").size, 1)
     assertEquals(c.states("spent").init, Value.D(BigDecimal("0.00")))
     val t = c.tests.head
     assertEquals(t.caller, Value.E("User", "ann"))
@@ -63,6 +63,11 @@ class TypesSuite extends munit.FunSuite:
       List("!= between Users: not yet (two names are not known to be two things)"))
   }
 
+  test("text tests: texts only") {
+    assertEquals(problems("allow refund when payment starts \"pi_\" and not (payment contains \"test\")"), Nil)
+    assertEquals(problems("allow pay when amount starts \"1\""), List("Dec starts Text: texts only"))
+  }
+
   test("facts: arity, sorts, relation or value, nested") {
     assertEquals(problems("allow pay when owns(caller)"), List("owns takes 2 arguments, given 1"))
     assertEquals(problems("allow pay when owns(account, caller)"), List("expected User, found Account",
@@ -78,7 +83,10 @@ class TypesSuite extends munit.FunSuite:
     assertEquals(problems("allow pay when amount < 1 then balance(account) -= amount"),
       List("balance is a fact: only a state changes"))
     assertEquals(problems("allow pay when amount < 1 then spent(caller) += currency"), List("expected Dec, found Text"))
-    assertEquals(problems("allow pay"), List("an allow with no condition and no update does nothing: it allows nothing alone"))
+    assertEquals(problems("allow pay"), Nil) // allows every call of pay
+    assertEquals(problems("count pay then balance(account) += 1"), List("balance is a fact: only a state changes"))
+    assertEquals(problems("count * then spent(caller) += amount"),
+      List("`amount` is not an argument of every tool this rule decides (*): only of pay"))
   }
 
   test("tests: unknown tools, arguments, facts; missing arguments") {

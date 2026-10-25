@@ -58,4 +58,7 @@
   Prove (builds the proof from the evaluation, no search: axiom, ∀ out, atoms by `Compute` with the facts' values then
   `Subst` back with each fact's equation reversed), Decide (deny > allow with a condition > ask > default deny, fail
   closed), Facts / Store effects (Store.Memory with windows), Tests (a policy's `test` blocks). An allow with no
-  condition only adds its updates. Decision 8.4 µs JVM; certificate 53 µs.
+  condition allows every call; `count` (decides nothing) makes its updates for calls that go ahead. Text tests
+  `starts`/`ends`/`contains` are the kernel's `take`/`takeRight`/`indexOf` (added 2026-10-25, by code points — and in
+  okay-lean's Check/Arith.lean, commit 55f4bf1; DifferentialSuite has their certificates: 856, all agreed). Decision
+  8.4 µs JVM; certificate 53 µs.

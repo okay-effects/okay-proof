@@ -63,7 +63,11 @@ deny *
   when calls(caller) >= 60
   because "too many calls"
 
-allow * then calls(caller) += 1        -- a rule may only count: it allows nothing alone (see Decisions)
+count * then calls(caller) += 1        -- what goes ahead is counted; a count decides nothing
+
+allow fs.read                          -- no condition: every call of the tool is allowed
+allow fs.write
+  when path starts "/workspace/" and not (path ends ".env")
 
 test "a small payment is allowed"
   given owns(ann, acc1), role(ann) = "teller", balance(acc1) = 900.00, spent(ann) = 100.00
@@ -80,16 +84,18 @@ test "a payment over the limit of one is asked"
 
 ```text
 policy    ::= "policy" name decl*
-decl      ::= type | fact | state | call | rule | test
+decl      ::= type | fact | state | call | rule | count | test
 type      ::= "type" Name                                   -- an entity sort: values are names (ann, acc1)
 fact      ::= "fact" name "(" params ")" (":" sort)? ("from" name)?
 state     ::= "state" name "(" params ")" ":" sort ("per" window)? "=" literal
 call      ::= "call" tool "(" params ")" | "import" "tools" "from" text   -- a server's JSON schema
 rule      ::= verdict target ("when" cond)? ("then" update ("," update)*)? ("because" text)?
+count     ::= "count" target ("when" cond)? "then" update ("," update)*
 verdict   ::= "allow" | "ask" | "deny"
 target    ::= tool | server ".*" | "*"
 cond      ::= cond "and" cond | cond "or" cond | "not" cond | "(" cond ")" | atom
 atom      ::= expr cmp expr | expr "in" "[" exprs "]" | name "(" exprs ")"      -- a relation fact
+            | expr ("starts" | "ends" | "contains") expr                         -- texts
 cmp       ::= "=" | "!=" | "<" | "<=" | ">" | ">="
 expr      ::= expr ("+" | "-") expr | expr "*" literal | "(" expr ")" | literal | var | name "(" exprs ")"
 update    ::= name "(" exprs ")" ("=" | "+=" | "-=") expr
@@ -129,13 +135,13 @@ For a call, the rules whose target matches it (the tool's own, its server's `.*`
 if its condition holds under the facts. Then:
 
 1. if a `deny` applies, the call is denied;
-2. otherwise, if an `allow` WITH a condition applies, it is allowed;
+2. otherwise, if an `allow` applies, it is allowed — an `allow` with no condition always applies;
 3. otherwise, if an `ask` applies, a human is asked;
 4. otherwise it is denied: nothing is allowed without a rule that proves it (fail closed).
 
-An `allow` without a condition (`allow * then calls(caller) += 1`) does not allow by itself: it only adds its updates
-to a call allowed by another rule. Among several applying rules of one verdict, all their updates are made; the
-`because` texts are all reported.
+Among several applying rules of one verdict, all their updates are made; the `because` texts are all reported. A
+`count` decides nothing: its updates are made for every call of its target that goes ahead — allowed, or asked and
+approved — and its condition holds; never for a denied one.
 
 Every verdict but the last is a THEOREM: `deny(call)`, `allow(call)`, `ask(call)` proved in the kernel of the policy's
 theory from the call's facts. The last one, the default deny, is reported with the rules that were tried and why each
@@ -149,6 +155,9 @@ A policy is translated to an okay-proof `Theory`:
 - a fact `f(x: A): B` is a function symbol; a relation fact `r(x: A, y: B)` a predicate; a state the same as a function
   of its key, its current value a fact given by the store;
 - a call `t(a: A, ...)` gives the predicates `allow_t`, `ask_t`, `deny_t` over (caller, arguments);
+- `a starts b` is `take(a, length(b)) = b`, `a ends b` is `takeRight(a, length(b)) = b`, `a contains b` is
+  `0 ≤ indexOf(a, b)` — the kernel's own functions on texts, by characters (code points, as Lean's strings), computed
+  alike by okay-lean's second checker;
 - a rule `allow t when C` is the axiom `∀ caller, args. C ⇒ allow_t(caller, args)`; a `*` rule one axiom per tool;
 - a call's question: its arguments as constants; the facts read as ground formulas (`owns(ann, acc1)`,
   `balance(acc1) = 900.00`, `spent(ann) = 100.00`), each a hypothesis of the theorem.

@@ -48,9 +48,17 @@ enum Cond:
   case In(a: Expr, options: List[Expr], pos: Pos)
   /** a relation fact */
   case Holds(name: String, args: List[Expr], pos: Pos)
+  /** a text test: `path starts "/ws/"` */
+  case Text(a: Expr, op: TextOp, b: Expr, pos: Pos)
   case And(a: Cond, b: Cond)
   case Or(a: Cond, b: Cond)
   case Not(c: Cond, pos: Pos)
+
+/** how a text is tested against another */
+enum TextOp:
+  case Starts, Ends, Contains
+
+  def word: String = productPrefix.toLowerCase
 
 enum Verdict:
   case Allow, Ask, Deny
@@ -105,6 +113,8 @@ enum Decl:
   case Call(tool: String, params: List[Param], pos: Pos)
   case Rule(verdict: Verdict, target: Target, when: Option[Cond], updates: List[Update], because: Option[String],
             pos: Pos)
+  /** what is counted when a call goes ahead (allowed, or asked and approved): it decides nothing */
+  case Count(target: Target, when: Option[Cond], updates: List[Update], pos: Pos)
   case Test(name: String, givens: List[Given], caller: String, tool: String, args: List[Arg], expect: Verdict,
             because: Option[String], pos: Pos)
 
@@ -117,4 +127,5 @@ final case class Policy(name: String, decls: List[Decl]):
   def states: List[Decl.State] = decls.collect { case d: Decl.State => d }
   def calls: List[Decl.Call] = decls.collect { case d: Decl.Call => d }
   def rules: List[Decl.Rule] = decls.collect { case d: Decl.Rule => d }
+  def counts: List[Decl.Count] = decls.collect { case d: Decl.Count => d }
   def tests: List[Decl.Test] = decls.collect { case d: Decl.Test => d }

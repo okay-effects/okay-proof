@@ -27,6 +27,7 @@ final class Prove(t: Theorize):
     case TCond.Compare(a, cmp, b) => TCond.Compare(bind(a, env), cmp, bind(b, env))
     case TCond.In(a, os) => TCond.In(bind(a, env), os.map(bind(_, env)))
     case TCond.Holds(n, as) => TCond.Holds(n, as.map(bind(_, env)))
+    case TCond.Text(a, op, b) => TCond.Text(bind(a, env), op, bind(b, env))
     case TCond.And(a, b) => TCond.And(bind(a, env), bind(b, env))
     case TCond.Or(a, b) => TCond.Or(bind(a, env), bind(b, env))
     case TCond.Not(a) => TCond.Not(bind(a, env))

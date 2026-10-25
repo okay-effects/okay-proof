@@ -17,7 +17,8 @@ class SyntaxSuite extends munit.FunSuite:
     assertEquals(p.calls.map(_.tool), List("stripe.create_payment", "stripe.refund"))
     assertEquals(p.rules.map(r => (r.verdict, r.target)), List(
       (Verdict.Allow, Target.Tool("stripe.create_payment")), (Verdict.Ask, Target.Tool("stripe.create_payment")),
-      (Verdict.Deny, Target.Any), (Verdict.Allow, Target.Any), (Verdict.Allow, Target.Tool("stripe.refund"))))
+      (Verdict.Deny, Target.Any), (Verdict.Allow, Target.Tool("stripe.refund"))))
+    assertEquals(p.counts.map(_.target), List(Target.Any))
     assertEquals(p.tests.map(_.expect), List(Verdict.Allow, Verdict.Ask, Verdict.Deny))
     assertEquals(p.tests(1).because, Some("a large payment"))
     assertEquals(p.tests(2).givens.head, Given.Holds("not owns".drop(4), p.tests(2).givens.head match
@@ -50,11 +51,12 @@ class SyntaxSuite extends munit.FunSuite:
     def problem(text: String) = Parser.parse(text).left.toOption.getOrElse(fail(s"parsed: $text"))
     assertEquals(problem("policy p\ntype user").toString, "2:6: a type's name starts with a capital: user")
     assertEquals(problem("policy p\nallow * when amount <").message, "expected a value: a number, a text, a name, a fact, found the end")
-    assertEquals(problem("policy p\nallow * when x").message, "expected a comparison (=, !=, <, <=, >, >=) or 'in', found the end")
+    assertEquals(problem("policy p\nallow * when x").message,
+      "expected a comparison (=, !=, <, <=, >, >=), 'in', or a text test (starts, ends, contains), found the end")
     assertEquals(problem("policy p\nfact f(x User)").pos, Pos(2, 10))
     assertEquals(problem("policy p\nallow * because \"no end\n").message, "a text not closed on its line")
     assertEquals(problem("policy p\nallow * because \"no end").message, "a text not closed")
     assertEquals(problem("policy p\nallow * when x # 1").message, "an unexpected character '#'")
     assertEquals(problem("policy p\nwhen").message,
-      "expected a declaration: type, fact, state, call, allow, ask, deny or test, found 'when'")
+      "expected a declaration: type, fact, state, call, allow, ask, deny, count or test, found 'when'")
   }

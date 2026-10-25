@@ -49,6 +49,7 @@ enum TCond:
   case Compare(a: TExpr, cmp: Cmp, b: TExpr)
   case In(a: TExpr, options: List[TExpr])
   case Holds(name: String, args: List[TExpr])
+  case Text(a: TExpr, op: TextOp, b: TExpr)
   case And(a: TCond, b: TCond)
   case Or(a: TCond, b: TCond)
   case Not(c: TCond)
@@ -63,6 +64,9 @@ final case class CallSig(tool: String, params: List[(String, Sort)])
 final case class TRule(index: Int, verdict: Verdict, tools: List[String], when: Option[TCond], updates: List[TUpdate],
                        because: Option[String], source: Decl.Rule)
 
+/** a count checked: the tools whose calls it counts, its condition, its updates */
+final case class TCount(tools: List[String], when: Option[TCond], updates: List[TUpdate], source: Decl.Count)
+
 final case class TGiven(name: String, args: List[Value], value: Either[Boolean, Value])
 final case class TTest(name: String, givens: List[TGiven], caller: Value, tool: String, args: Map[String, Value],
                        expect: Verdict, because: Option[String], source: Decl.Test)
@@ -70,9 +74,11 @@ final case class TTest(name: String, givens: List[TGiven], caller: Value, tool: 
 /** A POLICY CHECKED: its signatures, and its rules and tests over them — what the evaluator runs */
 final case class Checked(policy: Policy, types: Set[String], facts: Map[String, FactSig],
                          states: Map[String, StateSig], calls: Map[String, CallSig], rules: List[TRule],
-                         tests: List[TTest]):
+                         counts: List[TCount], tests: List[TTest]):
   /** the rules deciding `tool`, in the policy's order */
   lazy val rulesOf: Map[String, List[TRule]] = calls.keys.map(t => t -> rules.filter(_.tools.contains(t))).toMap
+  /** the counts of `tool`'s calls */
+  lazy val countsOf: Map[String, List[TCount]] = calls.keys.map(t => t -> counts.filter(_.tools.contains(t))).toMap
 
 /** THE TYPE CHECKER: every problem of a policy, each with its place — or the policy checked */
 object Types:
@@ -129,8 +135,9 @@ object Types:
       }.toMap
       val sigs = Sigs(facts, states, calls)
       val rules = p.rules.zipWithIndex.flatMap((r, i) => rule(r, i, sigs))
+      val counts = p.counts.flatMap(count(_, sigs))
       val tests = p.tests.flatMap(test(_, sigs))
-      if problems.isEmpty then Right(Checked(p, types, facts, states, calls, rules, tests))
+      if problems.isEmpty then Right(Checked(p, types, facts, states, calls, rules, counts, tests))
       else Left(problems.toList.sortBy(q => (q.pos.line, q.pos.col)))
 
     private def duplicates(names: List[(String, Pos)], what: String): Unit =
@@ -151,29 +158,38 @@ object Types:
         problem(e.pos, s"expected a literal of $s, found ${Printer.expr(e)}")
         None
 
-    private def rule(r: Decl.Rule, index: Int, sigs: Sigs): Option[TRule] =
-      val tools = r.target match
+    /** a target's tools, and the scope of a rule or a count on them: `caller`, `tool`, and the arguments every tool
+     * has, of one sort; none if a tool is unknown */
+    private def scopeOf(target: Target, pos: Pos, sigs: Sigs): Option[Scope] =
+      val tools = target match
         case Target.Tool(t) =>
-          if !sigs.calls.contains(t) then problem(r.pos, s"an unknown tool $t: declare it with `call`")
+          if !sigs.calls.contains(t) then problem(pos, s"an unknown tool $t: declare it with `call`")
           List(t)
         case Target.Server(s) =>
           val ts = sigs.calls.keys.filter(_.startsWith(s + ".")).toList.sorted
-          if ts.isEmpty then problem(r.pos, s"no tool of the server $s is declared")
+          if ts.isEmpty then problem(pos, s"no tool of the server $s is declared")
           ts
         case Target.Any => sigs.calls.keys.toList.sorted
-      // the variables: `caller`, `tool`, and the arguments every tool of the rule has, of one sort
       val common = tools.map(t => sigs.calls.get(t).fold(Map.empty[String, Sort])(_.params.toMap))
       val args = common.headOption.fold(Map.empty[String, Sort])(first =>
         first.filter((n, s) => common.forall(_.get(n).contains(s))))
-      if tools.isEmpty || tools.exists(t => !sigs.calls.contains(t)) then return None
-      val env = args ++ Map("caller" -> Sort.Entity(callerType), "tool" -> Sort.Text)
-      val scope = Scope(env, sigs, r.target, tools)
-      val when = r.when.flatMap(cond(_, scope)).map(nnf)
-      val updates = r.updates.flatMap(update(_, scope))
-      if r.when.isEmpty && r.verdict == Verdict.Allow && r.updates.isEmpty then
-        problem(r.pos, "an allow with no condition and no update does nothing: it allows nothing alone")
-      Option.when(r.when.isEmpty || when.isDefined)(
-        TRule(index, r.verdict, tools, when, updates, r.because, r))
+      Option.when(tools.nonEmpty && tools.forall(sigs.calls.contains))(
+        Scope(args ++ Map("caller" -> Sort.Entity(callerType), "tool" -> Sort.Text), sigs, target, tools))
+
+    private def rule(r: Decl.Rule, index: Int, sigs: Sigs): Option[TRule] =
+      scopeOf(r.target, r.pos, sigs).flatMap { scope =>
+        val when = r.when.flatMap(cond(_, scope)).map(nnf)
+        val updates = r.updates.flatMap(update(_, scope))
+        Option.when(r.when.isEmpty || when.isDefined)(
+          TRule(index, r.verdict, scope.tools, when, updates, r.because, r))
+      }
+
+    private def count(c: Decl.Count, sigs: Sigs): Option[TCount] =
+      scopeOf(c.target, c.pos, sigs).flatMap { scope =>
+        val when = c.when.flatMap(cond(_, scope)).map(nnf)
+        val updates = c.updates.flatMap(update(_, scope))
+        Option.when(c.when.isEmpty || when.isDefined)(TCount(scope.tools, when, updates, c))
+      }
 
     private final case class Scope(env: Map[String, Sort], sigs: Sigs, target: Target, tools: List[String]):
       def missing(name: String, pos: Pos): Unit =
@@ -308,6 +324,13 @@ object Types:
           if scope.sigs.states.contains(n) then problem(pos, s"$n is a state: compare its value")
           else problem(pos, s"an unknown fact $n")
           None
+      case Cond.Text(a, op, b, pos) =>
+        for
+          x <- expr(a, scope, Some(Sort.Text))
+          y <- expr(b, scope, Some(Sort.Text))
+          r <- if x.sort == Sort.Text && y.sort == Sort.Text then Some(TCond.Text(x, op, y))
+               else { problem(pos, s"${x.sort} ${op.word} ${y.sort}: texts only"); None }
+        yield r
       case Cond.In(a, os, pos) =>
         expr(a, scope, None).flatMap { x =>
           val ys = os.map(o => expr(o, scope, Some(x.sort)).flatMap(fit(_, x.sort, o.pos)))
