@@ -2,16 +2,16 @@
 
 ## Get it
 
-okay-proof is built with sbt on Scala 3.3 (LTS); it depends on okay-simple's release, from okay-simple's Maven
-repository on GitHub Pages:
+okay-proof is built with sbt on Scala 3.3 (LTS), for the JVM and for the browser (Scala.js); it depends on
+okay-scala's release, from okay-scala's Maven repository on GitHub Pages:
 
 ```text
-resolvers += "okay-effects" at "https://okay-effects.github.io/okay-simple/maven"
-libraryDependencies += "io.github.okay-effects" %% "okay-effects-machine" % "0.1.0"
+resolvers += "okay-scala" at "https://okay-effects.github.io/okay-scala/maven"
+libraryDependencies += "io.github.okay-effects" %%% "okay-scala" % "0.1.1"
 ```
 
 Clone it and `sbt test`; your code beside it, or `sbt publishLocal` and depend on
-`"io.github.okay-effects" %% "okay-proof" % "0.1.0-SNAPSHOT"`.
+`"io.github.okay-effects" %%% "okay-proof" % "0.1.0-SNAPSHOT"`.
 
 ## A theorem, by the kernel's rules
 

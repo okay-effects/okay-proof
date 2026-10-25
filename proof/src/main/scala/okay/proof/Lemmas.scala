@@ -1,7 +1,8 @@
 package okay.proof
 
 import scala.collection.mutable
-import okay.effects.*
+import okay.scala3.*
+import okay.scala3.std.*
 import Formula.*
 import Term.*
 

@@ -2,7 +2,7 @@
 
 `Auto.prove(kernel, facts, goal)` proves `goal` backward from FACTS (the hypotheses: what a request brings) and the
 theory's RULES (its axioms `∀x̄. body → head`, or `∀x̄. head`). Each inference a step of `Infer` — checked by the
-kernel, seen by any interceptor; each alternative a choice of okay-simple's `Choose`, so the handler is the strategy:
+kernel, seen by any interceptor; each alternative a choice of okay-scala's `Choose`, so the handler is the strategy:
 `first` (the first proof, depth first — `Auto.prove`), `all` (every one).
 
 A goal is, in turn:

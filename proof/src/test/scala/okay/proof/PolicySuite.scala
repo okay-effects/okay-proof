@@ -1,7 +1,7 @@
 package okay.proof
 
-import okay.effects.*
-import okay.effects.std.*
+import okay.scala3.*
+import okay.scala3.std.*
 import Bank.*
 import Formula.*
 
@@ -67,11 +67,10 @@ class PolicySuite extends munit.FunSuite:
     case Transfer(user: Term, account: Term, amount: String, proof: Thm) extends Pay[String]
 
   def guard[R[_], A](known: Set[Formula])(p: A ! R)(using In[Pay, R], In[Writer % String, R]): A ! R =
-    around[Pay, R, A](p)(new Around[Pay, R]:
-      def apply[X](op: Pay[X], proceed: X ! R): X ! R = op match
+    around[Pay, R, A](p)([X] => (op: Pay[X], proceed: X ! R) => op match
         case Pay.Transfer(u, a, amount, t) =>
           val ok = k.owns(t) && t.concl == transfer(u, a, amount) && t.hyps.subsetOf(known)
-          if ok then proceed else tell[String, R](s"refused: no proof for $u $a $amount").map(_ => "refused"))
+          if ok then proceed else Writer.tell[String, R](s"refused: no proof for $u $a $amount").map(_ => "refused"))
 
   test("a GATE: a guarded operation runs with its proof, and without one is refused") {
     type Row[X] = (Writer % String + Pay)[X]
@@ -81,10 +80,8 @@ class PolicySuite extends munit.FunSuite:
       x <- pay("500.00", good)
       y <- pay("900.00", good) // the proof is of 500.00
     yield List(x, y)
-    val ran = run(writer[String](handle(guard[Row, List[String]](facts.toSet)(program),
-      new TailHandler[Pay, Writer % String, List[String], List[String]]:
-        def ret(a: List[String]) = pure(a)
-        def answer[X](op: Pay[X]): X = op match
-          case Pay.Transfer(_, _, amount, _) => s"sent $amount")))
+    val ran = run(Writer.run(handle(guard[Row, List[String]](facts.toSet)(program),
+      Handler.tail[Pay, Writer % String, List[String], List[String]](pure)([X] => (op: Pay[X]) => op match
+          case Pay.Transfer(_, _, amount, _) => s"sent $amount"))))
     assertEquals(ran, (List("refused: no proof for ann acc1 900.00"), List("sent 500.00", "refused")))
   }

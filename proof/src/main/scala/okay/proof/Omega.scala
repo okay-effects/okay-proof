@@ -3,7 +3,8 @@ package okay.proof
 import java.math.{BigDecimal as JDec, BigInteger, RoundingMode}
 import java.util.IdentityHashMap
 import scala.collection.mutable
-import okay.effects.*
+import okay.scala3.*
+import okay.scala3.std.*
 import Formula.*
 import Term.*
 
@@ -75,7 +76,7 @@ object Omega:
 
   /** Pugh's symmetric residue: `v − m·⌊v/m + 1/2⌋` */
   private def modHat(v: BigInteger, m: BigInteger): BigInteger =
-    val two = BigInteger.TWO
+    val two = BigInteger.valueOf(2)
     val q = floorDivI(v.multiply(two).add(m), m.multiply(two))
     v.subtract(m.multiply(q))
 

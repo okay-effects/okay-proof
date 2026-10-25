@@ -2,7 +2,7 @@
 
 A small prover for the run time, in Scala 3: a kernel of first-order logic with equality, induction and exact
 arithmetic, LCF-style — a theorem is a value only the kernel makes — whose inference steps are also an EFFECT of
-[okay-simple](https://github.com/okay-effects/okay-simple)'s, so a proof can be audited step by step and controlled
+[okay-scala](https://github.com/okay-effects/okay-scala)'s, so a proof can be audited step by step and controlled
 by interceptors without trusting them. For decisions that must be justified: a transfer allowed by a policy, a sum of
 money computed with its rounding named, a limit respected — each a theorem, in microseconds, with a certificate that
 another checker — okay-lean's, in Lean — checks again.
@@ -55,18 +55,19 @@ Documentation: [docs/](docs/README.md) — every example compiled and run by `sb
 
 ## Build
 
-Scala 3.3 LTS, sbt; depends on okay-simple's release (`io.github.okay-effects::okay-effects-machine:0.1.0`, from its
-Maven repository on GitHub Pages — `build.sbt` has the resolver).
+Scala 3.3 LTS, sbt; the JVM and the browser (Scala.js); depends on okay-scala's release
+(`io.github.okay-effects::okay-scala:0.1.1`, from its Maven repository on GitHub Pages — `build.sbt` has the resolver).
 
 ```text
-sbt test                                  # the kernel, arithmetic, effects, search, lemmas, certificates, the docs —
+sbt proofJVM/test                         # the kernel, arithmetic, effects, search, lemmas, certificates, the docs —
                                           # and the differential test against okay-lean's checker, when it is built
-sbt "Test/runMain okay.proof.Bench"       # what it costs
+sbt proofJS/test                          # the same in the browser's JavaScript (the docs and okay-lean's on the JVM)
+sbt "proofJVM/Test/runMain okay.proof.Bench"   # what it costs
 ```
 
 ## The family
 
-One of the [okay-effects](https://github.com/okay-effects) family: built on okay-simple's effects; its certificates
+One of the [okay-effects](https://github.com/okay-effects) family: built on okay-scala's effects; its certificates
 checked a second time by [okay-lean](https://github.com/okay-effects/okay-lean), in Lean.
 
 License: Apache 2.0.

@@ -2,7 +2,8 @@ package okay.proof
 
 import java.math.{BigDecimal as JDec, BigInteger}
 import scala.collection.mutable
-import okay.effects.*
+import okay.scala3.*
+import okay.scala3.std.*
 import Formula.*
 
 /**

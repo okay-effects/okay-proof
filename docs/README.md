@@ -7,7 +7,7 @@ Every ```scala block in these pages is compiled and run by `sbt test` (`DocsSuit
 - [Arithmetic](arithmetic.md) — exact computation, linear arithmetic over the rationals and the integers (the Omega
   test), products of variables.
 - [Proofs as programs, steps as an effect](effects.md) — `Infer`, the kernel as its handler; audit and control by
-  okay-simple's interceptors; a guarded operation.
+  okay-scala's interceptors; a guarded operation.
 - [Proof search](search.md) — `Auto`: rules, facts, values, arithmetic; strategies as handlers.
 - [Lemmas](lemmas.md) — the library: proved, not assumed.
 - [Certificates](certificates.md) — a proof as JSON, its theory and digest; the second checker in Lean.

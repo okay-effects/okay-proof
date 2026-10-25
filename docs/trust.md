@@ -42,7 +42,7 @@ A bug there can fail to find a proof, never make a false theorem.
 ## A step as an effect
 
 A proof program performs `Infer.Step(rule)`; the kernel is the handler that answers it (`Infer.by(kernel)`). Between
-them any interceptor of okay-simple's may stand. What it can do, and why that is safe:
+them any interceptor of okay-scala's may stand. What it can do, and why that is safe:
 
 | an interceptor … | effect | why it is safe |
 |---|---|---|

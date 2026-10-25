@@ -1,10 +1,11 @@
 package okay.proof
 
-import okay.effects.*
+import okay.scala3.*
+import okay.scala3.std.*
 
 /**
  * AN INFERENCE STEP AS AN EFFECT. A proof is a program performing `Infer.Step(rule)`; the kernel is the handler that
- * answers it (`Infer.by(kernel)`). Between the two any interceptor of okay-simple's may stand — `observe` for an audit
+ * answers it (`Infer.by(kernel)`). Between the two any interceptor of okay-scala's may stand — `observe` for an audit
  * of every step, `around` to refuse a rule, a cache — and none of them can forge:
  *
  *  - a theorem is made by a kernel alone (`Thm`'s constructor is `Kernel`'s), so an answer is a true theorem of SOME
@@ -34,23 +35,22 @@ object Infer:
 
   /** the kernel answering every step of `p`; a refused step, or a result of another kernel, the proof's failure */
   def by[R[_], Rest[_]](k: Kernel)(p: Thm ! R)(using Split[Infer, R, Rest]): Either[String, Thm] ! Rest =
-    handle(p, new Handler[Infer, Rest, Thm, Either[String, Thm]]:
-      def ret(t: Thm) = pure(if k.owns(t) then Right(t) else Left(s"a theorem of another kernel: ${t.concl}"))
-      def op[X](op: Infer[X], kx: X => Either[String, Thm] ! Rest) = op match
+    handle(p, Handler.general[Infer, Rest, Thm, Either[String, Thm]](t =>
+      pure(if k.owns(t) then Right(t) else Left(s"a theorem of another kernel: ${t.concl}")))(
+      [X] => (op: Infer[X], kx: X => Either[String, Thm] ! Rest) => op match
         case Step(rule) => k.derive(rule) match
           case Right(t) => kx(t)
           case Left(why) => pure(Left(why))
-        case Refuse(why) => pure(Left(why)))
+        case Refuse(why) => pure(Left(why))))
 
   /** the kernel answering every step of `p`, of any value: theorems in it are the caller's to check (`owns`) */
   def checking[R[_], Rest[_], A](k: Kernel)(p: A ! R)(using Split[Infer, R, Rest]): Either[String, A] ! Rest =
-    handle(p, new Handler[Infer, Rest, A, Either[String, A]]:
-      def ret(a: A) = pure(Right(a))
-      def op[X](op: Infer[X], kx: X => Either[String, A] ! Rest) = op match
+    handle(p, Handler.general[Infer, Rest, A, Either[String, A]](a => pure(Right(a)))(
+      [X] => (op: Infer[X], kx: X => Either[String, A] ! Rest) => op match
         case Step(rule) => k.derive(rule) match
           case Right(t) => kx(t)
           case Left(why) => pure(Left(why))
-        case Refuse(why) => pure(Left(why)))
+        case Refuse(why) => pure(Left(why))))
 
   // the rules as words of a proof program
   import Rule.*

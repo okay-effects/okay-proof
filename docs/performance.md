@@ -16,7 +16,7 @@ rounds; JDK 26, Apple silicon, 2026-10-22.
 | the Omega test: Pugh's example, ~1000 steps, by cases | 1.9 ms |
 | products: `0 ≤ p ≤ 10, 0 ≤ q ≤ 5 ⊢ p·q ≤ 50` | 107 µs |
 | the lemma library, 42 lemmas proved | 0.28 ms, once a kernel |
-| a certificate written (2.9 KB) / checked, every step derived again | 14 µs / 26 µs |
+| a certificate written (3.5 KB, the theory in it by value) / checked, every step derived again | 34 µs / 58 µs |
 
 `ProfileDecision` runs a decision in a loop for a profiler (`java -XX:StartFlightRecording=… -cp <Test/fullClasspath>
 okay.proof.ProfileDecision 15`). What made it fast, and what did not: AGENTS.md.

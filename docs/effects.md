@@ -1,11 +1,11 @@
 # Proofs as programs, steps as an effect
 
-A proof is a program of okay-simple's that performs `Infer.Step(rule)`; the kernel is the handler that answers each
-step (`Infer.by(kernel)`). So whatever okay-simple does with an effect — interception, audit, a journal — a proof has.
+A proof is a program of okay-scala's that performs `Infer.Step(rule)`; the kernel is the handler that answers each
+step (`Infer.by(kernel)`). So whatever okay-scala does with an effect — interception, audit, a journal — a proof has.
 
 ```scala
-import okay.effects.*
-import okay.effects.std.*
+import okay.scala3.*
+import okay.scala3.std.*
 import okay.proof.*
 import okay.proof.Formula.*
 import okay.proof.Term.*
@@ -27,19 +27,17 @@ assert(run(Infer.by(kernel)(proof[Infer])).map(_.concl) == Right(goal))
 
 ```scala
 type Audited[X] = (Writer % String + Infer)[X]
-val audited = observe[Infer, Audited, Thm](proof[Audited])(new Observe[Infer, Audited]:
-  def apply[X](op: Infer[X]): Unit ! Audited = op match
-    case Infer.Step(r) => tell[String, Audited](r.productPrefix)
-    case Infer.Refuse(why) => tell[String, Audited](s"refused: $why"))
-val (log, result) = run(writer[String](Infer.by(kernel)(audited)))
+val audited = observe[Infer, Audited, Thm](proof[Audited])([X] => (op: Infer[X]) => op match
+    case Infer.Step(r) => Writer.tell[String, Audited](r.productPrefix)
+    case Infer.Refuse(why) => Writer.tell[String, Audited](s"refused: $why"))
+val (log, result) = run(Writer.run(Infer.by(kernel)(audited)))
 assert(log == List("Compute", "Compute", "AndI"))
 ```
 
 ## Control: a rule vetoed
 
 ```scala
-val vetoed = around[Infer, Infer, Thm](proof[Infer])(new Around[Infer, Infer]:
-  def apply[X](op: Infer[X], proceed: X ! Infer): X ! Infer = op match
+val vetoed = around[Infer, Infer, Thm](proof[Infer])([X] => (op: Infer[X], proceed: X ! Infer) => op match
     case Infer.Step(Rule.AndI(_, _)) => Infer.refuse[Infer]("no conjunctions here")
     case _ => proceed)
 assert(run(Infer.by(kernel)(vetoed)) == Left("no conjunctions here"))
@@ -52,17 +50,17 @@ was performed (`t.by eq rule`); one answering with a theorem of another kernel (
 every rule and by `Infer.by`:
 
 ```scala
-val forged = around[Infer, Infer, Thm](proof[Infer])(new Around[Infer, Infer]:
-  def apply[X](op: Infer[X], proceed: X ! Infer): X ! Infer = op match
-    case Infer.Step(Rule.AndI(_, _)) => Infer.step[Infer](Rule.Compute(True))
-    case _ => proceed)
+def forge[X](op: Infer[X], proceed: X ! Infer): X ! Infer = op match
+  case Infer.Step(Rule.AndI(_, _)) => Infer.step[Infer](Rule.Compute(True))
+  case _ => proceed
+val forged = around[Infer, Infer, Thm](proof[Infer])([X] => (op: Infer[X], proceed: X ! Infer) => forge(op, proceed))
 assert(run(Infer.by(kernel)(forged)).left.exists(_.contains("not made from it")))
 
 val lax = Kernel(Theory("lax", "anything" -> Lt(I(5), I(2))))
-val foreign = around[Infer, Infer, Thm](proof[Infer])(new Around[Infer, Infer]:
-  def apply[X](op: Infer[X], proceed: X ! Infer): X ! Infer = op match
-    case Infer.Step(r @ Rule.Compute(_)) => pure(lax.derive(r).toOption.get)
-    case _ => proceed)
+def fromLax[X](op: Infer[X], proceed: X ! Infer): X ! Infer = op match
+  case Infer.Step(r @ Rule.Compute(_)) => pure(lax.derive(r).toOption.get)
+  case _ => proceed
+val foreign = around[Infer, Infer, Thm](proof[Infer])([X] => (op: Infer[X], proceed: X ! Infer) => fromLax(op, proceed))
 assert(run(Infer.by(kernel)(foreign)).left.exists(_.contains("another kernel")))
 ```
 
@@ -74,8 +72,7 @@ An effect of one's own whose operation runs only with a theorem that it is allow
 exactly this operation, from facts the guard knows. `PolicySuite`'s `Pay.Transfer` is one; the guard is an `around`:
 
 ```text
-around[Pay, R, A](p)(new Around[Pay, R]:
-  def apply[X](op: Pay[X], proceed: X ! R): X ! R = op match
+around[Pay, R, A](p)([X] => (op: Pay[X], proceed: X ! R) => op match
     case Pay.Transfer(u, a, amount, t) =>
       if policyKernel.owns(t) && t.concl == mayTransfer(u, a, amount) && t.hyps.subsetOf(known) then proceed
       else refuse(...))

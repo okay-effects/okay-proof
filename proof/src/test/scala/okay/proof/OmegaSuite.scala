@@ -98,7 +98,7 @@ class OmegaSuite extends munit.FunSuite:
       }
       if !solvable && Linarith.refute(facts, Nil, Sort.Int).isEmpty then pastRationals += 1
       // the Omega test alone, its steps checked by the kernel
-      Omega.refute(facts, Nil).map(plan => okay.effects.run(Infer.by(k)(Omega.emit[Infer](plan)))) match
+      Omega.refute(facts, Nil).map(plan => okay.scala3.run(Infer.by(k)(Omega.emit[Infer](plan)))) match
         case Some(Left(why)) => fail(s"a step refused: $why")
         case Some(Right(t)) =>
           assert(!solvable, s"refuted a solvable system: $facts")

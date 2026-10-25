@@ -155,10 +155,16 @@ object Logic:
 
   /** texts compared by code points, as Lean compares its strings */
   val byCodePoints: Ordering[String] = (a, b) =>
-    val (x, y) = (a.codePoints.toArray, b.codePoints.toArray)
-    var i = 0
-    while i < x.length && i < y.length && x(i) == y(i) do i += 1
-    if i < x.length && i < y.length then Integer.compare(x(i), y(i)) else Integer.compare(x.length, y.length)
+    // walked by `codePointAt`, no array made (and no `codePoints` stream, which Scala.js has not)
+    var i, j = 0
+    var order = 0
+    while order == 0 && i < a.length && j < b.length do
+      val x = a.codePointAt(i)
+      val y = b.codePointAt(j)
+      order = Integer.compare(x, y)
+      i += Character.charCount(x)
+      j += Character.charCount(y)
+    if order != 0 then order else Integer.compare(a.codePointCount(i, a.length), b.codePointCount(j, b.length))
 
   /** terms in the order of their keys */
   val termOrder: Ordering[Term] = Ordering.by[Term, String](_.key)(using byCodePoints)

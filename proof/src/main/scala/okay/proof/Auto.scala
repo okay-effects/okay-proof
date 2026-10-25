@@ -1,7 +1,7 @@
 package okay.proof
 
-import okay.effects.*
-import okay.effects.std.*
+import okay.scala3.*
+import okay.scala3.std.*
 
 /**
  * PROOF SEARCH ON EFFECTS: a goal proved backward from FACTS (the hypotheses: what a request brings — roles,
@@ -37,7 +37,7 @@ final class Auto(theory: Theory, facts: List[Formula], depth: Int = 32):
   /** `goal`, proved — or no branch: a failed choice */
   def prove[R[_]: Has[Infer]: Has[Choose]](goal: Formula): Thm ! R = go[R](goal, depth)
 
-  private def none[R[_]: Has[Choose]]: Thm ! R = fail[Thm, R]
+  private def none[R[_]: Has[Choose]]: Thm ! R = Choose.none[Thm, R]
 
   private def go[R[_]: Has[Infer]: Has[Choose]](goal: Formula, d: Int): Thm ! R =
     if d <= 0 then none[R]
@@ -47,7 +47,7 @@ final class Auto(theory: Theory, facts: List[Formula], depth: Int = 32):
       if Arithmetic.truth(goal).contains(true) then compute[R](goal) else none[R]
     else goal match
       case And(a, b) => go[R](a, d - 1).flatMap(ta => go[R](b, d - 1).flatMap(tb => andI[R](ta, tb)))
-      case Or(a, b) => among[Boolean, R](List(true, false)).flatMap { left =>
+      case Or(a, b) => Choose.among[Boolean, R](List(true, false)).flatMap { left =>
           if left then go[R](a, d - 1).flatMap(t => step[R](Rule.OrI1(t, b)))
           else go[R](b, d - 1).flatMap(t => step[R](Rule.OrI2(a, t)))
         }
@@ -109,7 +109,7 @@ final class Auto(theory: Theory, facts: List[Formula], depth: Int = 32):
   /** `goal` as the head of a rule, chosen among those whose head matches */
   private def byRules[R[_]: Has[Infer]: Has[Choose]](goal: Formula, d: Int): Thm ! R =
     val candidates = rules.flatMap(r => Auto.matchF(r.head, goal, r.vars.toSet, Map.empty).map(r -> _))
-    among[(RuleShape, Map[V, Term]), R](candidates).flatMap { (r, bound) =>
+    Choose.among[(RuleShape, Map[V, Term]), R](candidates).flatMap { (r, bound) =>
       r.body match
         case None => instantiate[R](r, bound)
         case Some(body) =>
@@ -142,7 +142,7 @@ final class Auto(theory: Theory, facts: List[Formula], depth: Int = 32):
       if !open then bindFromFacts[R](rest, vars, b)
       else
         val options = facts.flatMap(f => Auto.matchF(c, f, vars, b))
-        among[Map[V, Term], R](options).flatMap(b2 => bindFromFacts[R](rest, vars, b2))
+        Choose.among[Map[V, Term], R](options).flatMap(b2 => bindFromFacts[R](rest, vars, b2))
 
 object Auto:
   import Formula.*
@@ -171,6 +171,6 @@ object Auto:
    * refused step `Left` */
   def prove(kernel: Kernel, facts: List[Formula], goal: Formula, depth: Int = 32): Either[String, Option[Thm]] =
     val search = Auto(kernel.theory, facts, depth)
-    run(Infer.checking(kernel)(first(search.prove[Choose + Infer](goal)))) match
+    run(Infer.checking(kernel)(Choose.first(search.prove[Infer + Choose](goal)))) match
       case Right(Some(t)) if !kernel.owns(t) => Left(s"a theorem of another kernel: ${t.concl}")
       case other => other
