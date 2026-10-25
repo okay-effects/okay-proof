@@ -99,6 +99,10 @@ enum Change:
 
 final case class Update(state: String, key: List[Expr], change: Change, value: Expr, pos: Pos)
 
+/** a fact fetched by a tool of an MCP server: `from mcp stripe.retrieve_balance(account: account) at "available.0"` —
+ * its arguments of the fact's parameters, its value at a path in the tool's result */
+final case class Fetch(tool: String, args: List[(String, Expr)], at: String, pos: Pos)
+
 final case class Param(name: String, sort: Sort, pos: Pos, optional: Boolean = false)
 
 enum Window:
@@ -122,7 +126,8 @@ final case class Arg(name: String, value: Expr, pos: Pos)
 enum Decl:
   case Type(name: String, pos: Pos)
   case Record(name: String, fields: List[Param], pos: Pos)
-  case Fact(name: String, params: List[Param], result: Option[Sort], source: Option[String], pos: Pos)
+  case Fact(name: String, params: List[Param], result: Option[Sort], source: Option[String], pos: Pos,
+            fetch: Option[Fetch] = None)
   case State(name: String, params: List[Param], sort: Sort, window: Option[Window], init: Expr, pos: Pos)
   case Call(tool: String, params: List[Param], pos: Pos)
   case Rule(verdict: Verdict, target: Target, when: Option[Cond], updates: List[Update], because: Option[String],

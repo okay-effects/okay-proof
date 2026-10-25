@@ -3,6 +3,8 @@ package okay.policy
 import okay.scala3.*
 import okay.scala3.std.*
 
+import okay.proof.Json
+
 import scala.concurrent.{ExecutionContext, Future}
 
 /** a fact or a state, applied: `owns(ann, acc1)`, `spent(ann)` */
@@ -58,8 +60,8 @@ object Facts:
 
   /** an answer of the fact's kind and sort: a relation true or false, a function's value of its result's sort */
   def fits(checked: Checked, ref: FactRef, a: Answer): Boolean = (checked.facts.get(ref.name), a) match
-    case (Some(FactSig(_, _, None, _)), Answer.Holds(_)) => true
-    case (Some(FactSig(_, _, Some(sort), _)), Answer.Is(v)) => (sort, v) match
+    case (Some(FactSig(_, _, None, _, _)), Answer.Holds(_)) => true
+    case (Some(FactSig(_, _, Some(sort), _, _)), Answer.Is(v)) => (sort, v) match
       case (Sort.Int, Value.I(_)) | (Sort.Dec, Value.D(_)) | (Sort.Text, Value.T(_)) => true
       case (Sort.Entity(t), Value.E(s, _)) => t == s
       case _ => false
@@ -84,6 +86,57 @@ object Source:
 
   /** a source of no fact */
   val none: Source = _ => pure(Map.empty)
+
+  /**
+   * THE FACTS FETCHED BY MCP TOOLS (`fact balance(a: Account): Dec from mcp stripe.retrieve_balance(account: a) at
+   * "available.0.amount"`): a source for each such tool, under the name its facts give (`mcp:stripe.retrieve_balance`),
+   * calling it by `invoke` — the guard's own call of its server, not the agent's — once a fact, all at once. The value
+   * read at the path, in the result's structured content, or in its first text read as JSON; converted to the fact's
+   * sort, a relation from a boolean. A tool that fails, a path that leads nowhere, a value of another kind: unknown.
+   */
+  def mcp(checked: Checked, invoke: (String, Json) => Future[Json])(using ExecutionContext): Map[String, Source] =
+    checked.facts.values.flatMap(sig => sig.fetch.map(f => (sig, f))).groupBy(_._2.tool).map { (tool, sigs) =>
+      val source: Source = (refs: List[FactRef]) => Async.fromFuture(Future.traverse(refs) { r =>
+        sigs.find(_._1.name == r.name) match
+          case None => Future.successful(None)
+          case Some((sig, f)) =>
+            val env = f.params.zip(r.args).toMap
+            val args = f.args.flatMap((k, e) => Eval.value(e, env, Known(Map.empty, Map.empty)).map(v => k -> json(v)))
+            invoke(tool, Json.Obj(args)).map(res => at(content(res), f.at).flatMap(answer(sig, _)).map(r -> _))
+              .recover { case _ => None }
+      }.map(_.flatten.toMap))
+      ("mcp:" + tool) -> source
+    }
+
+  private def json(v: Value): Json = v match
+    case Value.I(i) => Json.Num(i.toString)
+    case Value.D(d) => Json.Num(d.bigDecimal.toPlainString)
+    case Value.T(t) => Json.Str(t)
+    case Value.E(_, n) => Json.Str(n)
+
+  /** a tool's result's content: its structured content, else its first text as JSON (or as a text), else itself */
+  private def content(res: Json): Json =
+    res.get("structuredContent").getOrElse(res.get("content") match
+      case Some(Json.Arr(items)) => items.flatMap(_.get("text")).collectFirst { case Json.Str(t) =>
+        Json.parse(t).getOrElse(Json.Str(t)) }.getOrElse(res)
+      case _ => res)
+
+  private def at(j: Json, path: List[String]): Option[Json] = path match
+    case Nil => Some(j)
+    case seg :: rest => (j, seg.toIntOption) match
+      case (Json.Arr(xs), Some(i)) => xs.lift(i).flatMap(at(_, rest))
+      case (o: Json.Obj, _) => o.get(seg).flatMap(at(_, rest))
+      case _ => None
+
+  private def answer(sig: FactSig, j: Json): Option[Answer] = (sig.result, j) match
+    case (None, Json.Bool(b)) => Some(Answer.Holds(b))
+    case (Some(Sort.Int), Json.Num(t)) => scala.util.Try(BigInt(t)).toOption.map(i => Answer.Is(Value.I(i)))
+    case (Some(Sort.Dec), Json.Num(t)) => Some(Answer.Is(Value.D(BigDecimal(t))))
+    case (Some(Sort.Dec), Json.Str(t)) => scala.util.Try(BigDecimal(t)).toOption.map(d => Answer.Is(Value.D(d)))
+    case (Some(Sort.Text), Json.Str(t)) => Some(Answer.Is(Value.T(t)))
+    case (Some(Sort.Entity(e)), Json.Str(t)) => Some(Answer.Is(Value.E(e, t)))
+    case (Some(Sort.Entity(e)), Json.Num(t)) => Some(Answer.Is(Value.E(e, t)))
+    case _ => None
 
 /** a change of a state: set, or added to, or taken from — applied by the store, atomically with the others of its
  * decision */

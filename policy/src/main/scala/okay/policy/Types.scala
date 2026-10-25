@@ -64,7 +64,11 @@ enum TCond:
 
 final case class TUpdate(state: String, key: List[TExpr], change: Change, value: TExpr)
 
-final case class FactSig(name: String, params: List[Sort], result: Option[Sort], source: Option[String])
+final case class FactSig(name: String, params: List[Sort], result: Option[Sort], source: Option[String],
+                         fetch: Option[TFetch] = None)
+
+/** a fact's fetch checked: the tool, its arguments over the fact's parameters (by their names), the path */
+final case class TFetch(tool: String, params: List[String], args: List[(String, TExpr)], at: List[String])
 final case class StateSig(name: String, params: List[Sort], sort: Sort, window: Option[Window], init: Value)
 /** an argument of a call, or a field of a record: its sort, and whether it may be missing */
 final case class Field(name: String, sort: Sort, optional: Boolean)
@@ -160,7 +164,15 @@ object Types:
         f.params.foreach(x => { known(x.sort, x.pos); flat(x.sort, x.pos, s"a fact's parameter ${x.name}") })
         f.result.foreach(r => { known(r, f.pos); flat(r, f.pos, s"${f.name}'s value") })
         duplicates(f.params.map(x => (x.name, x.pos)), "parameter")
-        f.name -> FactSig(f.name, f.params.map(_.sort), f.result, f.source)
+        val fetch = f.fetch.flatMap { fe =>
+          val scope = Scope(f.params.map(x => x.name -> norm(x.sort)).toMap, Map.empty,
+            Sigs(Map.empty, Map.empty, Map.empty, Map.empty), Target.Any, Nil)
+          val as = fe.args.map((k, v) => k -> expr(v, scope, None))
+          if fe.at.isEmpty then problem(fe.pos, "a path in the tool's result: \"\" names nothing")
+          Option.when(as.forall(_._2.isDefined) && fe.at.nonEmpty)(
+            TFetch(fe.tool, f.params.map(_.name), as.map((k, v) => k -> v.get), fe.at.split('.').toList))
+        }
+        f.name -> FactSig(f.name, f.params.map(_.sort), f.result, f.source, fetch)
       }.toMap
       val states = p.states.flatMap { s =>
         s.params.foreach(x => { known(x.sort, x.pos); flat(x.sort, x.pos, s"a state's key ${x.name}") })
@@ -362,7 +374,7 @@ object Types:
         }
       case Expr.Apply(n, as, pos) =>
         scope.sigs.facts.get(n) match
-          case Some(FactSig(_, ps, Some(result), _)) => args(n, as, ps, pos, scope).map(TExpr.Fact(n, _, result))
+          case Some(FactSig(_, ps, Some(result), _, _)) => args(n, as, ps, pos, scope).map(TExpr.Fact(n, _, result))
           case Some(_) => problem(pos, s"$n is a relation: a condition, not a value"); None
           case None => scope.sigs.states.get(n) match
             case Some(sig) => args(n, as, sig.params, pos, scope).map(TExpr.State(n, _, sig.sort))
@@ -433,7 +445,7 @@ object Types:
       case Cond.Every(x, l, body, pos) => quantified(x, l, body, pos, scope)(TCond.Every(_, _, _))
       case Cond.Exists(x, l, body, pos) => quantified(x, l, body, pos, scope)(TCond.Exists(_, _, _))
       case Cond.Holds(n, as, pos) => scope.sigs.facts.get(n) match
-        case Some(FactSig(_, ps, None, _)) => args(n, as, ps, pos, scope).map(TCond.Holds(n, _))
+        case Some(FactSig(_, ps, None, _, _)) => args(n, as, ps, pos, scope).map(TCond.Holds(n, _))
         case Some(_) => problem(pos, s"$n is a function fact: compare its value (`$n(...) = ...`)"); None
         case None =>
           if scope.sigs.states.contains(n) then problem(pos, s"$n is a state: compare its value")
@@ -491,10 +503,10 @@ object Types:
         }
       val givens = t.givens.flatMap {
         case Given.Holds(n, as, truth, pos) => sigs.facts.get(n) match
-          case Some(FactSig(_, ps, None, _)) if ps.length == as.length =>
+          case Some(FactSig(_, ps, None, _, _)) if ps.length == as.length =>
             val vs = as.zip(ps).map(constant(_, _))
             Option.when(vs.forall(_.isDefined))(TGiven(n, vs.flatten, Left(truth)))
-          case Some(FactSig(_, ps, None, _)) => problem(pos, s"$n takes ${ps.length}, given ${as.length}"); None
+          case Some(FactSig(_, ps, None, _, _)) => problem(pos, s"$n takes ${ps.length}, given ${as.length}"); None
           case Some(_) => problem(pos, s"$n is a function fact: give its value (`$n(...) = ...`)"); None
           case None => problem(pos, s"an unknown relation fact $n"); None
         case Given.Value(n, as, v, pos) =>

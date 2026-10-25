@@ -181,8 +181,21 @@ object Parser:
         val (n, _) = name("a fact's name")
         val ps = params()
         val result = if acceptSym(":") then Some(sort()) else None
-        val source = if acceptWord("from") then Some(name("a source's name")._1) else None
-        Decl.Fact(n, ps, result, source, p)
+        if acceptWord("from") then
+          if isWord("mcp") && peekAt(1).isInstanceOf[Tok.Name] then
+            val fp = next().pos
+            val (tool, _) = name("an MCP tool: server.tool")
+            sym("(")
+            val as = ArrayBuffer.empty[(String, Expr)]
+            if !isSym(")") then
+              as += field()
+              while acceptSym(",") do as += field()
+            sym(")")
+            word("at")
+            val at = text("a path in the tool's result, in quotes")
+            Decl.Fact(n, ps, result, Some("mcp:" + tool), p, Some(Fetch(tool, as.toList, at, fp)))
+          else Decl.Fact(n, ps, result, Some(name("a source's name")._1), p)
+        else Decl.Fact(n, ps, result, None, p)
       case Tok.Name("state", p) =>
         next()
         val (n, _) = name("a state's name")

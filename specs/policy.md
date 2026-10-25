@@ -210,6 +210,18 @@ its fact or by computation, `ImpE`. An atom with facts in it (`spent(ann) + 50.0
 evaluator can make a decision fail, never a wrong decision proved. The theorem's hypotheses are exactly the facts it
 used: what the audit shows.
 
+## Facts from MCP tools
+
+```text
+fact balance(account: Account): Dec from mcp stripe.retrieve_balance(customer: account) at "available.0.amount"
+fact vip(user: User) from mcp crm.get_customer(id: user) at "flags.vip"
+```
+
+The guard itself calls the tool (its own call of its server, not the agent's — never decided by the policy), its
+arguments the fact's parameters or literals, and reads the value at the path (`.`-separated, numbers index arrays) in
+the result's `structuredContent`, else in its first text read as JSON. `Source.mcp(checked, invoke)` makes the sources
+(`mcp:<tool>`), one call a fact, all at once. A failing tool, a path to nothing, a value of another kind: unknown.
+
 ## Facts and state: effects
 
 ```text
