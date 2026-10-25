@@ -43,4 +43,12 @@ lazy val proof = crossProject(JVMPlatform, JSPlatform).crossType(CrossType.Pure)
       made.map(_._2) :+ suite
     }.taskValue)
 
-lazy val root = (project in file(".")).aggregate(proof.jvm, proof.js).settings(publish / skip := true)
+/** THE POLICY LANGUAGE: parsed, checked, its decisions theorems of the prover — specs/policy.md */
+lazy val policy = crossProject(JVMPlatform, JSPlatform).crossType(CrossType.Pure).in(file("policy"))
+  .dependsOn(proof)
+  .settings(
+    name := "okay-policy",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.2.3" % Test)
+
+lazy val root = (project in file(".")).aggregate(proof.jvm, proof.js, policy.jvm, policy.js)
+  .settings(publish / skip := true)
