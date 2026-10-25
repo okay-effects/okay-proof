@@ -111,7 +111,7 @@ expr      ::= expr ("+" | "-") expr | expr "*" literal | "(" expr ")" | literal 
 update    ::= name "(" exprs ")" ("=" | "+=" | "-=") expr
 window    ::= "minute" | "hour" | "day"
 test      ::= "test" text "given" given ("," given)* "when" name "calls" tool "(" args ")" "expect" verdict text?
-sort      ::= "Int" | "Dec" | "Text" | Name | "List" "[" sort "]"
+sort      ::= "Int" | "Dec" | "Text" | "Bool" | Name | "List" "[" sort "]"     -- Bool: arguments' and fields' only
 literal   ::= int | dec | text
 ```
 
@@ -159,6 +159,10 @@ allow shop.order
 
 - a record's fields by a path: `shipping.country`, `i.price`; `has(coupon)`, `has(shipping.zip)` — is it there;
 - a list: `count(items)`; `every x in items: ...`, `some x in items: ...` (a list of records or of values);
+- a `Bool` argument or field is a condition by itself: `dry_run`, `not opts.force` (in the logic a relation of the
+  call); a fact that is true or not is a relation fact, not a `Bool`;
+- a field the policy does not declare is left out — a client may send more than a policy needs; a declared one of the
+  wrong kind makes the call malformed, so denied;
 - a missing optional argument is UNKNOWN: an atom using it fails (a rule needing it does not apply) — unless the rule
   asks `has(...)` first, which is always known.
 

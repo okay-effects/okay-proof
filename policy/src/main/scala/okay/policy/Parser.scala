@@ -253,6 +253,7 @@ object Parser:
       case Tok.Name("Int", _) => next(); Sort.Int
       case Tok.Name("Dec", _) => next(); Sort.Dec
       case Tok.Name("Text", _) => next(); Sort.Text
+      case Tok.Name("Bool", _) => next(); Sort.Bool
       case Tok.Name("List", _) =>
         next()
         sym("[")
@@ -426,6 +427,7 @@ object Parser:
           Cond.In(a, options.toList, p)
         case _ => a match
           case Expr.Apply(n, as, p) => Cond.Holds(n, as, p)
+          case Expr.Var(n, p) => Cond.Flag(n, p)
           case _ => expected("a comparison (=, !=, <, <=, >, >=), 'in', or a text test (starts, ends, contains)")
 
     // EXPRESSIONS: + and - < * < an atom

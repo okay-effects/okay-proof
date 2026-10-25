@@ -11,6 +11,8 @@ final case class Problem(pos: Pos, message: String):
 /** A SORT: the numbers, text, and the entity types a policy declares */
 enum Sort:
   case Int, Dec, Text
+  /** true or false: an argument's, a field's — a relation of the call in the logic, a condition by itself */
+  case Bool
   case Entity(name: String)
   /** a record type's: `type Item = { sku: Text, qty: Int }` */
   case Rec(name: String)
@@ -61,6 +63,8 @@ enum Cond:
   case And(a: Cond, b: Cond)
   case Or(a: Cond, b: Cond)
   case Not(c: Cond, pos: Pos)
+  /** an argument or field of `Bool`, true: `dry_run`, `not item.gift` */
+  case Flag(path: String, pos: Pos)
   /** an optional argument or field given: `has(coupon)` */
   case Has(path: String, pos: Pos)
   /** each element of a list, or one of them: `every i in items: (...)` */

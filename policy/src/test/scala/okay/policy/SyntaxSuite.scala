@@ -57,7 +57,7 @@ class SyntaxSuite extends munit.FunSuite:
     def problem(text: String) = Parser.parse(text).left.toOption.getOrElse(fail(s"parsed: $text"))
     assertEquals(problem("policy p\ntype user").toString, "2:6: a type's name starts with a capital: user")
     assertEquals(problem("policy p\nallow * when amount <").message, "expected a value: a number, a text, a name, a fact, found the end")
-    assertEquals(problem("policy p\nallow * when x").message,
+    assertEquals(problem("policy p\nallow * when x + 1").message,
       "expected a comparison (=, !=, <, <=, >, >=), 'in', or a text test (starts, ends, contains), found the end")
     assertEquals(problem("policy p\nfact f(x User)").pos, Pos(2, 10))
     assertEquals(problem("policy p\nallow * because \"no end\n").message, "a text not closed on its line")

@@ -5,6 +5,7 @@ import okay.proof.Json
 /** a call's argument: a value, a record of fields, a list */
 enum Data:
   case Leaf(v: Value)
+  case Bit(b: Boolean)
   case Rec(fields: Map[String, Data])
   case Lst(items: List[Data])
 
@@ -32,7 +33,7 @@ object Call:
     val lists = scala.collection.mutable.Map.empty[FactRef, List[Value]]
     val bad = scala.collection.mutable.ListBuffer.empty[String]
     def fields(of: List[Field], supplied: Map[String, Data], prefix: String, base: Value, where: String): Unit =
-      supplied.keys.filterNot(k => of.exists(_.name == k)).foreach(k => bad += s"$where has no field $k")
+      // a field the policy does not know is no concern of it: left out, as a client may send more than it needs
       for f <- of do
         val name = if prefix.endsWith(":") then prefix + f.name else s"$prefix.${f.name}"
         if f.optional then out(FactRef("has:" + name, List(base))) = Answer.Holds(supplied.contains(f.name))
@@ -58,6 +59,7 @@ object Call:
           e
         }
         lists(ref) = elems.distinct
+      case (Sort.Bool, Data.Bit(b)) => out(FactRef(name, List(base))) = Answer.Holds(b)
       case (scalar, Data.Leaf(v)) if fits(scalar, v) => out(FactRef(name, List(base))) = Answer.Is(v)
       case _ => bad += s"$where is not a $s"
     checked.calls.get(call.tool) match
@@ -78,17 +80,18 @@ object Call:
       case (Sort.Dec, Json.Num(t)) => Data.Leaf(Value.D(BigDecimal(t)))
       case (Sort.Dec, Json.Str(t)) if t.nonEmpty && t.toDoubleOption.isDefined => Data.Leaf(Value.D(BigDecimal(t)))
       case (Sort.Text, Json.Str(t)) => Data.Leaf(Value.T(t))
+      case (Sort.Bool, Json.Bool(b)) => Data.Bit(b)
       case (Sort.Entity(e), Json.Str(t)) => Data.Leaf(Value.E(e, t))
       case (Sort.Entity(e), Json.Num(t)) => Data.Leaf(Value.E(e, t))
       case (Sort.ListOf(el), Json.Arr(xs)) => Data.Lst(xs.map(data(el, _)))
       case (Sort.Rec(r), Json.Obj(fs)) =>
         val of = checked.records(r)
-        Data.Rec(fs.collect { case (k, v) if v != Json.Null => k -> of.find(_.name == k).fold(Data.Lst(Nil))(f => data(f.sort, v)) }
-          .toMap)
+        Data.Rec(fs.collect { case (k, v) if v != Json.Null && of.exists(_.name == k) =>
+          k -> data(of.find(_.name == k).get.sort, v) }.toMap)
       case _ => Data.Lst(List(Data.Leaf(Value.T(j.render)))) // of the wrong kind: reported as malformed
     val params = checked.calls.get(tool).fold(Nil)(_.params)
     val fields = args match
-      case Json.Obj(fs) => fs.collect { case (k, v) if v != Json.Null =>
-        k -> params.find(_.name == k).fold(Data.Lst(Nil))(f => data(f.sort, v)) }.toMap
+      case Json.Obj(fs) => fs.collect { case (k, v) if v != Json.Null && params.exists(_.name == k) =>
+        k -> data(params.find(_.name == k).get.sort, v) }.toMap
       case _ => Map.empty
     Call(tool, caller, fields)

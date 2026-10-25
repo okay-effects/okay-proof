@@ -68,6 +68,7 @@ object Printer:
     case Cond.Holds(n, as, _) => s"$n(${as.map(expr).mkString(", ")})"
     case Cond.Text(a, op, b, _) => s"${expr(a)} ${op.word} ${expr(b)}"
     case Cond.Has(path, _) => s"has($path)"
+    case Cond.Flag(path, _) => path
     case Cond.Every(x, l, body, _) => s"every $x in $l: ${atomic(body)}"
     case Cond.Exists(x, l, body, _) => s"some $x in $l: ${atomic(body)}"
 

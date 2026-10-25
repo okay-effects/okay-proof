@@ -116,3 +116,27 @@ class StructuredSuite extends munit.FunSuite:
     assertEquals(Types.tests(policy.checked, tests.replace("qty: 1, price: 5.00", "price: 5.00")).left.map(_.map(_.message)),
       Left(List("the call's argument qty is missing")))
   }
+
+  test("BOOL arguments: a condition by themselves; from JSON's true and false; a field the policy does not know, left out") {
+    val p = Compiled("""policy files
+      |type User
+      |type Opts = { force: Bool, verbose?: Bool }
+      |call fs.delete(path: Text, dry_run: Bool, opts: Opts)
+      |allow fs.delete when dry_run or (not opts.force and path starts "/tmp/")
+      |""".stripMargin).fold(ps => fail(ps.mkString("\n")), identity)
+    def run(args: String) =
+      val c = Call.fromJson(p.checked, "fs.delete", ann, Json.parse(args).toOption.get)
+      okay.scala3.run(States.Memory(p.checked).handler(Facts.known(Map.empty)(Decide[Row](p, c))))
+    assertEquals(run("""{"path": "/etc/x", "dry_run": true, "opts": {"force": true}, "extra": [1, 2]}""").verdict, Verdict.Allow)
+    assertEquals(run("""{"path": "/tmp/x", "dry_run": false, "opts": {"force": false, "colour": "red"}}""").verdict,
+      Verdict.Allow)
+    assertEquals(run("""{"path": "/tmp/x", "dry_run": false, "opts": {"force": true}}""").verdict, Verdict.Deny)
+    val bad = run("""{"path": "/tmp/x", "dry_run": "no", "opts": {"force": false}}""")
+    assertEquals(bad.verdict, Verdict.Deny)
+    assert(bad.reasons.exists(_.contains("dry_run is not a Bool")), bad.reasons.toString)
+    assertEquals(Types("policy q\ntype User\ncall t(b: Bool)\nallow t when b = 1").left.map(_.map(_.message)),
+      Left(List("b is a Bool: a condition by itself (`b`, `not b`), not a value")))
+    assertEquals(Types("policy q\ntype User\nfact f(x: Bool)").left.map(_.map(_.message)), Left(List(
+      "a fact's parameter x is a number, a text or an entity, not Bool (a relation fact is what is true or not)")))
+  }
+

@@ -17,6 +17,7 @@ final class Theorize(val checked: Checked):
     case Sort.Entity(n) => okay.proof.Sort.Named(n)
     case Sort.Rec(n) => okay.proof.Sort.Named(n)
     case Sort.ListOf(e) => throw IllegalArgumentException(s"a list is no sort of the logic: List[$e]")
+    case Sort.Bool => throw IllegalArgumentException("a Bool is no sort of the logic: a relation is")
 
   def term(v: Value): Term = v match
     case Value.I(x) => Term.I(x)

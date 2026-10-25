@@ -140,12 +140,14 @@ object Types:
       case Sort.ListOf(e) => Sort.ListOf(norm(e))
       case other => other
     private def known(s: Sort, pos: Pos): Boolean = s match
+      case Sort.ListOf(Sort.Bool) => problem(pos, "a list of Bool: not yet"); false
       case Sort.Entity(n) if !types(n) && !recordNames(n) => problem(pos, s"an unknown type $n"); false
       case Sort.ListOf(e) => known(e, pos)
       case _ => true
     /** a fact's or a state's parameters and values: no records, no lists */
     private def flat(s: Sort, pos: Pos, what: String): Unit = norm(s) match
-      case Sort.Rec(_) | Sort.ListOf(_) => problem(pos, s"$what is a number, a text or an entity, not $s")
+      case Sort.Rec(_) | Sort.ListOf(_) | Sort.Bool => problem(pos, s"$what is a number, a text or an entity, not $s" +
+        (if s == Sort.Bool then " (a relation fact is what is true or not)" else ""))
       case _ => ()
     private val records: Map[String, List[Field]] =
       p.records.map(r => r.name -> r.fields.map(f => Field(f.name, norm(f.sort), f.optional))).toMap
@@ -354,6 +356,8 @@ object Types:
       case Expr.Var(n, pos) =>
         val head = n.takeWhile(_ != '.')
         if scope.env.contains(head) || scope.args.contains(head) then path(n, pos, scope).flatMap {
+          case Named.Leaf(t) if t.sort == Sort.Bool =>
+            problem(pos, s"$n is a Bool: a condition by itself (`$n`, `not $n`), not a value"); None
           case Named.Leaf(t) => Some(t)
           case Named.Lst(_) => problem(pos, s"$n is a list: count($n), every or some"); None
           case Named.Record(_, _, r) => problem(pos, s"$n is a $r: a field of it, or has($n)"); None
@@ -436,6 +440,10 @@ object Types:
         val (x, y) = (cond(a, scope), cond(b, scope))
         for l <- x; r <- y yield TCond.Or(l, r)
       case Cond.Not(a, _) => cond(a, scope).map(TCond.Not(_))
+      case Cond.Flag(p, pos) => path(p, pos, scope).flatMap {
+        case Named.Leaf(TExpr.Fact(n, List(base), Sort.Bool)) => Some(TCond.Holds(n, List(base)))
+        case _ => problem(pos, s"$p is not a Bool: a condition needs a comparison"); None
+      }
       case Cond.Has(p, pos) => path(p, pos, scope).map {
         case Named.Leaf(TExpr.Fact(n, List(base), _)) => TCond.Holds("has:" + n, List(base))
         case Named.Leaf(v) => TCond.Holds("has:" + p, List(v)) // a bound element: always there
@@ -529,6 +537,9 @@ object Types:
         case (Expr.RecLit(fs, rp), Sort.Rec(r)) =>
           fields(fs.map((n, v) => (n, v, rp)), sigs.records(r), s"$r has no field", rp).map(Data.Rec(_))
         case (_, Sort.ListOf(_) | Sort.Rec(_)) => problem(e.pos, s"expected a $s, found ${Printer.expr(e)}"); None
+        case (Expr.Var("true", _), Sort.Bool) => Some(Data.Bit(true))
+        case (Expr.Var("false", _), Sort.Bool) => Some(Data.Bit(false))
+        case (_, Sort.Bool) => problem(e.pos, s"expected true or false, found ${Printer.expr(e)}"); None
         case _ => constant(e, s).map(Data.Leaf(_))
       def fields(supplied: List[(String, Expr, Pos)], of: List[Field], what: String, pos: Pos): Option[Map[String, Data]] =
         supplied.filterNot(g => of.exists(_.name == g._1)).foreach(g => problem(g._3, s"$what ${g._1}"))
