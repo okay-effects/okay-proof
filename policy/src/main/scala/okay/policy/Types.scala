@@ -44,6 +44,10 @@ enum TExpr:
     case Mul(_, _, s) => s
     case ToDec(_) => Sort.Dec
 
+/** a list in a condition: its membership predicate's name, what it belongs to (the call, or an element), its
+ * elements' sort */
+final case class TList(name: String, base: TExpr, elem: Sort)
+
 /** A CHECKED CONDITION */
 enum TCond:
   case Compare(a: TExpr, cmp: Cmp, b: TExpr)
@@ -53,12 +57,18 @@ enum TCond:
   case And(a: TCond, b: TCond)
   case Or(a: TCond, b: TCond)
   case Not(c: TCond)
+  /** each element of a list: `∀x. list(base, x) ⇒ body` */
+  case Every(x: String, list: TList, body: TCond)
+  /** one of them: `∃x. list(base, x) ∧ body` */
+  case Exists(x: String, list: TList, body: TCond)
 
 final case class TUpdate(state: String, key: List[TExpr], change: Change, value: TExpr)
 
 final case class FactSig(name: String, params: List[Sort], result: Option[Sort], source: Option[String])
 final case class StateSig(name: String, params: List[Sort], sort: Sort, window: Option[Window], init: Value)
-final case class CallSig(tool: String, params: List[(String, Sort)])
+/** an argument of a call, or a field of a record: its sort, and whether it may be missing */
+final case class Field(name: String, sort: Sort, optional: Boolean)
+final case class CallSig(tool: String, params: List[Field])
 
 /** a rule checked: the tools it decides, its condition and updates over their common variables */
 final case class TRule(index: Int, verdict: Verdict, tools: List[String], when: Option[TCond], updates: List[TUpdate],
@@ -68,13 +78,13 @@ final case class TRule(index: Int, verdict: Verdict, tools: List[String], when: 
 final case class TCount(tools: List[String], when: Option[TCond], updates: List[TUpdate], source: Decl.Count)
 
 final case class TGiven(name: String, args: List[Value], value: Either[Boolean, Value])
-final case class TTest(name: String, givens: List[TGiven], caller: Value, tool: String, args: Map[String, Value],
+final case class TTest(name: String, givens: List[TGiven], caller: Value, tool: String, args: Map[String, Data],
                        expect: Verdict, because: Option[String], source: Decl.Test)
 
 /** A POLICY CHECKED: its signatures, and its rules and tests over them — what the evaluator runs */
-final case class Checked(policy: Policy, types: Set[String], facts: Map[String, FactSig],
-                         states: Map[String, StateSig], calls: Map[String, CallSig], rules: List[TRule],
-                         counts: List[TCount]):
+final case class Checked(policy: Policy, types: Set[String], records: Map[String, List[Field]],
+                         facts: Map[String, FactSig], states: Map[String, StateSig], calls: Map[String, CallSig],
+                         rules: List[TRule], counts: List[TCount]):
   /** the rules deciding `tool`, in the policy's order */
   lazy val rulesOf: Map[String, List[TRule]] = calls.keys.map(t => t -> rules.filter(_.tools.contains(t))).toMap
   /** the counts of `tool`'s calls */
@@ -84,6 +94,9 @@ final case class Checked(policy: Policy, types: Set[String], facts: Map[String, 
 object Types:
   /** the sort of `caller`: a policy that uses it declares `type User` */
   val callerType = "User"
+  /** the sort of the call itself, an entity of the logic: its arguments are facts about it */
+  val callType = "Call"
+  val call: TExpr = TExpr.Var("call", Sort.Entity(callType))
 
   def check(p: Policy): Either[List[Problem], Checked] = Checking(p).run()
 
@@ -95,6 +108,10 @@ object Types:
     case TCond.Not(TCond.Not(a)) => nnf(a)
     case TCond.Not(TCond.And(a, b)) => TCond.Or(nnf(TCond.Not(a)), nnf(TCond.Not(b)))
     case TCond.Not(TCond.Or(a, b)) => TCond.And(nnf(TCond.Not(a)), nnf(TCond.Not(b)))
+    case TCond.Not(TCond.Every(x, l, b)) => TCond.Exists(x, l, nnf(TCond.Not(b)))
+    case TCond.Not(TCond.Exists(x, l, b)) => TCond.Every(x, l, nnf(TCond.Not(b)))
+    case TCond.Every(x, l, b) => TCond.Every(x, l, nnf(b))
+    case TCond.Exists(x, l, b) => TCond.Exists(x, l, nnf(b))
     case other => other
 
   /** the text parsed and checked: the parser's problem, or the checker's */
@@ -112,22 +129,41 @@ object Types:
     private def problem(pos: Pos, message: String): Unit = problems += Problem(pos, message)
 
     private val types: Set[String] = p.types.map(_.name).toSet
+    private val recordNames: Set[String] = p.records.map(_.name).toSet
+    /** a sort as written, a record's name made a record */
+    private def norm(s: Sort): Sort = s match
+      case Sort.Entity(n) if recordNames(n) => Sort.Rec(n)
+      case Sort.ListOf(e) => Sort.ListOf(norm(e))
+      case other => other
     private def known(s: Sort, pos: Pos): Boolean = s match
-      case Sort.Entity(n) if !types(n) => problem(pos, s"an unknown type $n"); false
+      case Sort.Entity(n) if !types(n) && !recordNames(n) => problem(pos, s"an unknown type $n"); false
+      case Sort.ListOf(e) => known(e, pos)
       case _ => true
+    /** a fact's or a state's parameters and values: no records, no lists */
+    private def flat(s: Sort, pos: Pos, what: String): Unit = norm(s) match
+      case Sort.Rec(_) | Sort.ListOf(_) => problem(pos, s"$what is a number, a text or an entity, not $s")
+      case _ => ()
+    private val records: Map[String, List[Field]] =
+      p.records.map(r => r.name -> r.fields.map(f => Field(f.name, norm(f.sort), f.optional))).toMap
 
     def run(): Either[List[Problem], Checked] =
-      duplicates(p.types.map(t => (t.name, t.pos)), "type")
+      duplicates(p.types.map(t => (t.name, t.pos)) ++ p.records.map(r => (r.name, r.pos)), "type")
+      (p.types.map(t => (t.name, t.pos)) ++ p.records.map(r => (r.name, r.pos))).find(_._1 == callType)
+        .foreach((_, pos) => problem(pos, s"`$callType` is the call's own type"))
+      p.records.foreach { r =>
+        duplicates(r.fields.map(f => (f.name, f.pos)), "field")
+        r.fields.foreach(f => known(f.sort, f.pos))
+      }
       duplicates((p.facts.map(f => (f.name, f.pos)) ++ p.states.map(s => (s.name, s.pos))), "fact or state")
       duplicates(p.calls.map(c => (c.tool, c.pos)), "call")
       val facts = p.facts.map { f =>
-        f.params.foreach(x => known(x.sort, x.pos))
-        f.result.foreach(known(_, f.pos))
+        f.params.foreach(x => { known(x.sort, x.pos); flat(x.sort, x.pos, s"a fact's parameter ${x.name}") })
+        f.result.foreach(r => { known(r, f.pos); flat(r, f.pos, s"${f.name}'s value") })
         duplicates(f.params.map(x => (x.name, x.pos)), "parameter")
         f.name -> FactSig(f.name, f.params.map(_.sort), f.result, f.source)
       }.toMap
       val states = p.states.flatMap { s =>
-        s.params.foreach(x => known(x.sort, x.pos))
+        s.params.foreach(x => { known(x.sort, x.pos); flat(x.sort, x.pos, s"a state's key ${x.name}") })
         known(s.sort, s.pos)
         if s.sort == Sort.Text || s.sort.isInstanceOf[Sort.Entity] then
           problem(s.pos, s"a state is a number: ${s.name} is ${s.sort}")
@@ -136,19 +172,19 @@ object Types:
       val calls = p.calls.map { c =>
         c.params.foreach(x => known(x.sort, x.pos))
         duplicates(c.params.map(x => (x.name, x.pos)), "argument")
-        c.params.find(x => x.name == "caller" || x.name == "tool")
+        c.params.find(x => x.name == "caller" || x.name == "tool" || x.name == "call")
           .foreach(x => problem(x.pos, s"`${x.name}` is every call's own: not an argument"))
-        c.tool -> CallSig(c.tool, c.params.map(x => (x.name, x.sort)))
+        c.tool -> CallSig(c.tool, c.params.map(x => Field(x.name, norm(x.sort), x.optional)))
       }.toMap
-      val sigs = Sigs(facts, states, calls)
+      val sigs = Sigs(facts, states, calls, records)
       val rules = p.rules.zipWithIndex.flatMap((r, i) => rule(r, i, sigs))
       val counts = p.counts.flatMap(count(_, sigs))
-      if problems.isEmpty then Right(Checked(p, types, facts, states, calls, rules, counts))
+      if problems.isEmpty then Right(Checked(p, types, records, facts, states, calls, rules, counts))
       else Left(problems.toList.sortBy(q => (q.pos.line, q.pos.col)))
 
     def tests(c: Checked, f: TestFile): Either[List[Problem], List[TTest]] =
       if f.policy != c.policy.name then problem(f.pos, s"tests for ${f.policy}, not for ${c.policy.name}")
-      val sigs = Sigs(c.facts, c.states, c.calls)
+      val sigs = Sigs(c.facts, c.states, c.calls, c.records)
       duplicates(f.tests.map(t => (t.name, t.pos)), "test")
       val out = f.tests.flatMap(test(_, sigs))
       if problems.isEmpty then Right(out) else Left(problems.toList.sortBy(q => (q.pos.line, q.pos.col)))
@@ -158,7 +194,7 @@ object Types:
         if all.size > 1 then all.sortBy((_, p) => (p.line, p.col)).tail.foreach((_, p) => problem(p, s"a $what $n again")))
 
     private final case class Sigs(facts: Map[String, FactSig], states: Map[String, StateSig],
-                                  calls: Map[String, CallSig])
+                                  calls: Map[String, CallSig], records: Map[String, List[Field]])
 
     /** a literal of the sort, an `Int` one where a `Dec` is wanted */
     private def literal(e: Expr, s: Sort): Option[Value] = (e, s) match
@@ -183,11 +219,11 @@ object Types:
           if ts.isEmpty then problem(pos, s"no tool of the server $s is declared")
           ts
         case Target.Any => sigs.calls.keys.toList.sorted
-      val common = tools.map(t => sigs.calls.get(t).fold(Map.empty[String, Sort])(_.params.toMap))
-      val args = common.headOption.fold(Map.empty[String, Sort])(first =>
-        first.filter((n, s) => common.forall(_.get(n).contains(s))))
+      val common = tools.map(t => sigs.calls.get(t).fold(Map.empty[String, Field])(_.params.map(f => f.name -> f).toMap))
+      val args = common.headOption.fold(Map.empty[String, Field])(first =>
+        first.filter((n, f) => common.forall(_.get(n).exists(_.sort == f.sort))))
       Option.when(tools.nonEmpty && tools.forall(sigs.calls.contains))(
-        Scope(args ++ Map("caller" -> Sort.Entity(callerType), "tool" -> Sort.Text), sigs, target, tools))
+        Scope(Map("caller" -> Sort.Entity(callerType), "tool" -> Sort.Text), args, sigs, target, tools))
 
     private def rule(r: Decl.Rule, index: Int, sigs: Sigs): Option[TRule] =
       scopeOf(r.target, r.pos, sigs).flatMap { scope =>
@@ -204,9 +240,13 @@ object Types:
         Option.when(c.when.isEmpty || when.isDefined)(TCount(scope.tools, when, updates, c))
       }
 
-    private final case class Scope(env: Map[String, Sort], sigs: Sigs, target: Target, tools: List[String]):
+    /** what a rule's expressions may name: variables (`caller`, `tool`, an element bound by `every`/`some`), the
+     * arguments its tools have in common, the policy's signatures */
+    private final case class Scope(env: Map[String, Sort], args: Map[String, Field], sigs: Sigs, target: Target,
+                                   tools: List[String]):
+      def bind(x: String, s: Sort): Scope = copy(env = env + (x -> s))
       def missing(name: String, pos: Pos): Unit =
-        val inSome = tools.filter(t => sigs.calls.get(t).exists(_.params.exists(_._1 == name)))
+        val inSome = tools.filter(t => sigs.calls.get(t).exists(_.params.exists(_.name == name)))
         if inSome.nonEmpty then
           problem(pos, s"`$name` is not an argument of every tool this rule decides (${target.word}): only of " +
             inSome.mkString(", "))
@@ -225,6 +265,49 @@ object Types:
           for k <- key; v <- value; w <- fit(v, sig.sort, u.value.pos) yield TUpdate(u.state, k, u.change, w)
 
     private def numeric(s: Sort) = s == Sort.Int || s == Sort.Dec
+
+    /** what a path names: a value, a list, or a record (only `has` takes one) */
+    private enum Named:
+      case Leaf(e: TExpr)
+      case Lst(l: TList)
+      case Record(name: String, base: TExpr, rec: String)
+
+    /** a path — `amount`, `shipping.country`, `i.price`, `items` — from a variable or an argument, through records'
+     * fields: its function's name is the path from its base (`arg:shipping.country` of the call, `Item.price` of an
+     * element) */
+    private def path(p: String, pos: Pos, scope: Scope): Option[Named] =
+      val segs = p.split('.').toList
+      val start: Option[(TExpr, String, Sort)] = scope.env.get(segs.head) match
+        case Some(Sort.Rec(r)) => Some((TExpr.Var(segs.head, Sort.Rec(r)), r, Sort.Rec(r)))
+        case Some(s) => Some((TExpr.Var(segs.head, s), "", s))
+        case None => scope.args.get(segs.head).map(f => (call, "arg:" + segs.head, f.sort))
+      start match
+        case None => scope.missing(segs.head, pos); None
+        case Some((base, name0, sort0)) =>
+          if segs.tail.isEmpty && base != call then
+            sort0 match
+              case Sort.Rec(r) => Some(Named.Record(segs.head, base, r))
+              case s => Some(Named.Leaf(base))
+          else
+            // walk the fields; an element's base starts at its record's name
+            var name = name0
+            var sort = sort0
+            var ok = true
+            for seg <- segs.tail if ok do
+              sort match
+                case Sort.Rec(r) => scope.sigs.records(r).find(_.name == seg) match
+                  case Some(f) =>
+                    name = if name.isEmpty || name == r && base != call then s"$r.$seg" else s"$name.$seg"
+                    sort = f.sort
+                  case None => problem(pos, s"$r has no field $seg"); ok = false
+                case Sort.ListOf(_) =>
+                  problem(pos, s"a list's elements are reached by every or some, not by a path: $p"); ok = false
+                case other => problem(pos, s"$other has no fields: $p"); ok = false
+            if !ok then None
+            else sort match
+              case Sort.ListOf(e) => Some(Named.Lst(TList(name, base, e)))
+              case Sort.Rec(r) => Some(Named.Record(name, base, r))
+              case s => Some(Named.Leaf(TExpr.Fact(name, List(base), s)))
 
     /** `e` as the sort `s`: an `Int` lifted to a `Dec`, else the same sort or a problem */
     private def fit(e: TExpr, s: Sort, pos: Pos): Option[TExpr] =
@@ -256,11 +339,22 @@ object Types:
       case Expr.IntLit(v, _) => Some(TExpr.Lit(Value.I(v)))
       case Expr.DecLit(v, _) => Some(TExpr.Lit(Value.D(v)))
       case Expr.TextLit(v, _) => Some(TExpr.Lit(Value.T(v)))
-      case Expr.Var(n, pos) => scope.env.get(n) match
-        case Some(s) => Some(TExpr.Var(n, s))
-        case None => want match
-          case Some(Sort.Entity(t)) => Some(TExpr.Lit(Value.E(t, n)))
-          case _ => scope.missing(n, pos); None
+      case Expr.Var(n, pos) =>
+        val head = n.takeWhile(_ != '.')
+        if scope.env.contains(head) || scope.args.contains(head) then path(n, pos, scope).flatMap {
+          case Named.Leaf(t) => Some(t)
+          case Named.Lst(_) => problem(pos, s"$n is a list: count($n), every or some"); None
+          case Named.Record(_, _, r) => problem(pos, s"$n is a $r: a field of it, or has($n)"); None
+        }
+        else want match
+          case Some(Sort.Entity(t)) if !n.contains('.') => Some(TExpr.Lit(Value.E(t, n)))
+          case _ => scope.missing(head, pos); None
+      case Expr.Apply("count", List(Expr.Var(n, vp)), pos) if !scope.sigs.facts.contains("count") =>
+        path(n, vp, scope).flatMap {
+          case Named.Lst(l) => Some(TExpr.Fact(l.name + "#count", List(l.base), Sort.Int))
+          case _ => problem(pos, s"count of a list only: $n"); None
+        }
+      case _: (Expr.ListLit | Expr.RecLit) => problem(e.pos, "a list or a record is written only in a test's call"); None
       case Expr.Apply("dec", List(a), _) if !scope.sigs.facts.contains("dec") =>
         expr(a, scope, Some(Sort.Int)).flatMap { x =>
           if x.sort == Sort.Int then Some(TExpr.ToDec(x))
@@ -315,7 +409,7 @@ object Types:
     /** two sides of a comparison: the side that is a name of no variable takes the other's sort */
     private def sides(a: Expr, b: Expr, scope: Scope): Option[(TExpr, TExpr)] =
       val bare = (e: Expr) => e match
-        case Expr.Var(n, _) => !scope.env.contains(n)
+        case Expr.Var(n, _) => !scope.env.contains(n.takeWhile(_ != '.')) && !scope.args.contains(n.takeWhile(_ != '.'))
         case _ => false
       if bare(a) && !bare(b) then
         for y <- expr(b, scope, None); x <- expr(a, scope, Some(y.sort)) yield (x, y)
@@ -330,6 +424,14 @@ object Types:
         val (x, y) = (cond(a, scope), cond(b, scope))
         for l <- x; r <- y yield TCond.Or(l, r)
       case Cond.Not(a, _) => cond(a, scope).map(TCond.Not(_))
+      case Cond.Has(p, pos) => path(p, pos, scope).map {
+        case Named.Leaf(TExpr.Fact(n, List(base), _)) => TCond.Holds("has:" + n, List(base))
+        case Named.Leaf(v) => TCond.Holds("has:" + p, List(v)) // a bound element: always there
+        case Named.Lst(l) => TCond.Holds("has:" + l.name, List(l.base))
+        case Named.Record(n, base, _) => TCond.Holds("has:" + n, List(base))
+      }
+      case Cond.Every(x, l, body, pos) => quantified(x, l, body, pos, scope)(TCond.Every(_, _, _))
+      case Cond.Exists(x, l, body, pos) => quantified(x, l, body, pos, scope)(TCond.Exists(_, _, _))
       case Cond.Holds(n, as, pos) => scope.sigs.facts.get(n) match
         case Some(FactSig(_, ps, None, _)) => args(n, as, ps, pos, scope).map(TCond.Holds(n, _))
         case Some(_) => problem(pos, s"$n is a function fact: compare its value (`$n(...) = ...`)"); None
@@ -368,10 +470,20 @@ object Types:
           }
         }
 
+    private def quantified(x: String, l: String, body: Cond, pos: Pos, scope: Scope)(
+      make: (String, TList, TCond) => TCond): Option[TCond] =
+      if scope.env.contains(x) || scope.args.contains(x) then
+        problem(pos, s"$x is taken: an element needs a name of its own")
+        None
+      else path(l, pos, scope).flatMap {
+        case Named.Lst(list) => cond(body, scope.bind(x, list.elem)).map(make(x, list, _))
+        case _ => problem(pos, s"$l is not a list"); None
+      }
+
     private def test(t: Decl.Test, sigs: Sigs): Option[TTest] =
       val call = sigs.calls.get(t.tool)
       if call.isEmpty then problem(t.pos, s"an unknown tool ${t.tool}")
-      val noVars = Scope(Map.empty, sigs, Target.Tool(t.tool), List(t.tool))
+      val noVars = Scope(Map.empty, Map.empty, sigs, Target.Tool(t.tool), List(t.tool))
       def constant(e: Expr, s: Sort): Option[Value] =
         expr(e, noVars, Some(s)).flatMap(fit(_, s, e.pos)).flatMap {
           case TExpr.Lit(v) => Some(v)
@@ -397,15 +509,27 @@ object Types:
             case None => problem(pos, s"an unknown function fact or state $n"); None
       }
       val callerValue = Value.E(Types.callerType, t.caller)
-      val args = call.toList.flatMap { c =>
-        val written = t.args.map(a => a.name -> a).toMap
-        t.args.filterNot(a => c.params.exists(_._1 == a.name))
-          .foreach(a => problem(a.pos, s"${t.tool} has no argument ${a.name}"))
-        c.params.flatMap { (n, s) =>
-          written.get(n) match
-            case None => problem(t.pos, s"the call's argument $n is missing"); None
-            case Some(a) => constant(a.value, s).map(n -> _)
+      /** a test's written value as the call's data of a sort */
+      def data(e: Expr, s: Sort): Option[Data] = (e, s) match
+        case (Expr.ListLit(items, _), Sort.ListOf(el)) =>
+          val ds = items.map(data(_, el))
+          Option.when(ds.forall(_.isDefined))(Data.Lst(ds.flatten))
+        case (Expr.RecLit(fs, rp), Sort.Rec(r)) =>
+          fields(fs.map((n, v) => (n, v, rp)), sigs.records(r), s"$r has no field", rp).map(Data.Rec(_))
+        case (_, Sort.ListOf(_) | Sort.Rec(_)) => problem(e.pos, s"expected a $s, found ${Printer.expr(e)}"); None
+        case _ => constant(e, s).map(Data.Leaf(_))
+      def fields(supplied: List[(String, Expr, Pos)], of: List[Field], what: String, pos: Pos): Option[Map[String, Data]] =
+        supplied.filterNot(g => of.exists(_.name == g._1)).foreach(g => problem(g._3, s"$what ${g._1}"))
+        val written = supplied.map(g => g._1 -> g._2).toMap
+        val out = of.map { f =>
+          written.get(f.name) match
+            case None =>
+              if !f.optional then problem(pos, s"the call's argument ${f.name} is missing")
+              (f.name, Some(None))
+            case Some(v) => (f.name, data(v, f.sort).map(Some(_)))
         }
-      }.toMap
+        Option.when(out.forall(_._2.isDefined))(out.flatMap((n, d) => d.get.map(n -> _)).toMap)
+      val args = call.toList.flatMap(c =>
+        fields(t.args.map(a => (a.name, a.value, a.pos)), c.params, s"${t.tool} has no argument", t.pos).toList.flatMap(_.toList)).toMap
       if !types(Types.callerType) then problem(t.pos, s"a test's caller is a ${Types.callerType}: declare the type")
       Option.when(call.isDefined)(TTest(t.name, givens, callerValue, t.tool, args, t.expect, t.because, t))

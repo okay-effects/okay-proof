@@ -10,7 +10,7 @@ class DecideSuite extends munit.FunSuite:
   val ann = Value.E("User", "ann")
   val acc1 = Value.E("Account", "acc1")
   def pay(amount: String, currency: String = "usd", account: Value = acc1, by: Value = ann) =
-    Call("stripe.create_payment", by, Map("account" -> account, "amount" -> Value.D(BigDecimal(amount)),
+    Call.flat("stripe.create_payment", by, Map("account" -> account, "amount" -> Value.D(BigDecimal(amount)),
       "currency" -> Value.T(currency)))
   val known = Map(
     FactRef("owns", List(ann, acc1)) -> Answer.Holds(true),
@@ -31,9 +31,10 @@ class DecideSuite extends munit.FunSuite:
     assertEquals(d.verdict, Verdict.Allow)
     val t = d.theorem.get
     assert(policy.kernel.owns(t))
-    assertEquals(t.concl.toString.take(40), t.concl.toString.take(40))
-    assert(t.concl.toString.startsWith("allow:stripe.create_payment(ann, acc1, 50"), t.concl.toString)
+    assertEquals(t.concl.toString, "allow:stripe.create_payment(ann, call)")
     val hyps = t.hyps.map(_.toString)
+    assert(hyps.exists(_.startsWith("arg:amount(call) = 50")), hyps.toString) // the call's arguments, as its facts
+    assert(hyps.exists(_.startsWith("arg:account(call) = acc1")), hyps.toString)
     assert(hyps.exists(_.startsWith("owns(ann, acc1)")), hyps.toString)
     assert(hyps.exists(_.contains("balance(acc1)")), hyps.toString)
     assert(hyps.exists(_.contains("spent(ann)")), hyps.toString)
@@ -64,7 +65,7 @@ class DecideSuite extends munit.FunSuite:
   test("an unknown fact: the rule does not apply — a missing fact never allows") {
     val d = decide(pay("50.00"), known - FactRef("owns", List(ann, acc1)))
     assertEquals(d.verdict, Verdict.Deny)
-    assert(d.reasons.exists(_.contains("unknown: owns(ann, acc1)")), d.reasons.toString)
+    assert(d.reasons.exists(_.contains("owns(ann, acc1): unknown")), d.reasons.toString)
   }
 
   test("STATE: spent and counted by allowed calls; a budget runs out; asked calls change nothing until approved") {
@@ -104,21 +105,23 @@ class DecideSuite extends munit.FunSuite:
       |allow op when not (banned(caller) or level(caller) < 3) and not (n > 10)
       |""".stripMargin).fold(ps => fail(ps.mkString), identity)
     val facts = Map(FactRef("banned", List(ann)) -> Answer.Holds(false), FactRef("level", List(ann)) -> Answer.Is(Value.I(5)))
-    val d = run(States.Memory(p.checked).handler(Facts.known(facts)(Decide[Row](p, Call("op", ann, Map("n" -> Value.I(4)))))))
+    val d = run(States.Memory(p.checked).handler(Facts.known(facts)(Decide[Row](p, Call.flat("op", ann, Map("n" -> Value.I(4)))))))
     assertEquals(d.verdict, Verdict.Allow)
     assert(d.facts.map(_.toString).exists(_.startsWith("¬banned(ann)")), d.facts.toString)
     val low = facts.updated(FactRef("level", List(ann)), Answer.Is(Value.I(2)))
     assertEquals(run(States.Memory(p.checked).handler(Facts.known(low)(
-      Decide[Row](p, Call("op", ann, Map("n" -> Value.I(4))))))).verdict, Verdict.Deny)
+      Decide[Row](p, Call.flat("op", ann, Map("n" -> Value.I(4))))))).verdict, Verdict.Deny)
   }
 
   test("a wrong evaluator cannot make a wrong decision: a proof of a rule that does not hold is refused") {
     val allow = policy.checked.rulesOf("stripe.create_payment").head
-    val k = Known(known, Map(FactRef("spent", List(ann)) -> Value.D(BigDecimal("0.00"))))
+    def k(c: Call) = Known(known ++ Call.facts(policy.checked, c).facts,
+      Map(FactRef("spent", List(ann)) -> Value.D(BigDecimal("0.00"))))
     val tooMuch = pay("600.00") // over the limit of one: the allow rule does not hold
-    val got = run(okay.proof.Infer.by(policy.kernel)(policy.prove.decision[okay.proof.Infer](allow, tooMuch, k)))
+    val got = run(okay.proof.Infer.by(policy.kernel)(policy.prove.decision[okay.proof.Infer](allow, tooMuch, k(tooMuch))))
     assert(got.left.exists(_.contains("600 ≤ 500")), got.toString)
-    val ok = run(okay.proof.Infer.by(policy.kernel)(policy.prove.decision[okay.proof.Infer](allow, pay("60.00"), k)))
+    val fine = pay("60.00")
+    val ok = run(okay.proof.Infer.by(policy.kernel)(policy.prove.decision[okay.proof.Infer](allow, fine, k(fine))))
     assert(ok.isRight, ok.toString)
   }
 
@@ -136,7 +139,7 @@ class DecideSuite extends munit.FunSuite:
     |count fs.write then writes(caller) += 1
     |""".stripMargin).fold(ps => fail(ps.mkString("\n")), identity)
 
-  def file(tool: String, path: String) = Call(tool, ann, Map("path" -> Value.T(path)))
+  def file(tool: String, path: String) = Call.flat(tool, ann, Map("path" -> Value.T(path)))
   val home = Map(FactRef("home", List(ann)) -> Answer.Is(Value.T("/ws/ann/")))
   def onFiles(call: Call, store: States.Memory) =
     run(store.handler(Facts.known(home)(Decide.enforce[Row](files, call))))
@@ -145,7 +148,7 @@ class DecideSuite extends munit.FunSuite:
     val store = States.Memory(files.checked, () => 0L)
     val read = onFiles(file("fs.read", "/etc/passwd"), store)
     assertEquals(read.verdict, Verdict.Allow)
-    assertEquals(read.theorem.get.concl.toString, "allow:fs.read(ann, \"/etc/passwd\")")
+    assertEquals(read.theorem.get.concl.toString, "allow:fs.read(ann, call)")
     val write = onFiles(file("fs.write", "/ws/ann/notes.md"), store)
     assertEquals(write.verdict, Verdict.Allow)
     assert(write.facts.map(_.toString).exists(_.startsWith("home(ann)")), write.facts.toString)

@@ -23,8 +23,8 @@ private enum Tok:
 
 /** the text in tokens: names (a tool's with dots: `stripe.create_payment`), numbers, texts, symbols; `--` comments */
 private object Lexer:
-  private val symbols = List("!=", "<=", ">=", "+=", "-=", ".*", "(", ")", "[", "]", ",", ":", "=", "<", ">", "+",
-    "-", "*")
+  private val symbols = List("!=", "<=", ">=", "+=", "-=", ".*", "(", ")", "[", "]", "{", "}", ",", ":", "=", "<",
+    ">", "+", "-", "*", "?")
 
   def apply(text: String): Either[Problem, Vector[Tok]] =
     val out = ArrayBuffer.empty[Tok]
@@ -169,7 +169,13 @@ object Parser:
         next()
         val (n, np) = name("a type's name")
         if !n.head.isUpper then fail(np, s"a type's name starts with a capital: $n")
-        Decl.Type(n, p)
+        if acceptSym("=") then
+          sym("{")
+          val fields = ArrayBuffer(param())
+          while acceptSym(",") do fields += param()
+          sym("}")
+          Decl.Record(n, fields.toList, p)
+        else Decl.Type(n, p)
       case Tok.Name("fact", p) =>
         next()
         val (n, _) = name("a fact's name")
@@ -219,13 +225,20 @@ object Parser:
 
     private def param(): Param =
       val (n, p) = name("a parameter's name")
+      val optional = acceptSym("?")
       sym(":")
-      Param(n, sort(), p)
+      Param(n, sort(), p, optional)
 
     private def sort(): Sort = peek match
       case Tok.Name("Int", _) => next(); Sort.Int
       case Tok.Name("Dec", _) => next(); Sort.Dec
       case Tok.Name("Text", _) => next(); Sort.Text
+      case Tok.Name("List", _) =>
+        next()
+        sym("[")
+        val e = sort()
+        sym("]")
+        Sort.ListOf(e)
       case Tok.Name(t, _) if t.head.isUpper && !keywords(t) => next(); Sort.Entity(t)
       case _ => expected("a sort: Int, Dec, Text or a type")
 
@@ -326,6 +339,20 @@ object Parser:
         case Tok.Name("not", p) =>
           next()
           Cond.Not(negation(), p)
+        case Tok.Name("has", p) if peekAt(1) == Tok.Sym("(", peekAt(1).pos) =>
+          next()
+          sym("(")
+          val (path, _) = name("an argument or a field")
+          sym(")")
+          Cond.Has(path, p)
+        case Tok.Name(q @ ("every" | "some"), p) if peekAt(2) == Tok.Name("in", peekAt(2).pos) =>
+          next()
+          val (x, _) = name("an element's name")
+          word("in")
+          val (list, _) = name("a list")
+          sym(":")
+          val body = negation()
+          if q == "every" then Cond.Every(x, list, body, p) else Cond.Exists(x, list, body, p)
         case Tok.Sym("(", _) =>
           // a condition in parentheses, or an expression in them that a comparison follows: tried as the first
           val start = at
@@ -416,7 +443,28 @@ object Parser:
         val e = expr()
         sym(")")
         e
-      case Tok.Name(n, p) if !keywords(n) =>
+      case Tok.Name(n, p) if !keywords(n) || (n == "count" && peekAt(1).isInstanceOf[Tok.Sym]) =>
         next()
         if isSym("(") then Expr.Apply(n, args(), p) else Expr.Var(n, p)
+      case Tok.Sym("[", p) =>
+        next()
+        val items = ArrayBuffer.empty[Expr]
+        if !isSym("]") then
+          items += expr()
+          while acceptSym(",") do items += expr()
+        sym("]")
+        Expr.ListLit(items.toList, p)
+      case Tok.Sym("{", p) =>
+        next()
+        val fields = ArrayBuffer.empty[(String, Expr)]
+        if !isSym("}") then
+          fields += field()
+          while acceptSym(",") do fields += field()
+        sym("}")
+        Expr.RecLit(fields.toList, p)
       case _ => expected("a value: a number, a text, a name, a fact")
+
+    private def field(): (String, Expr) =
+      val (n, _) = name("a field's name")
+      sym(":")
+      (n, expr())

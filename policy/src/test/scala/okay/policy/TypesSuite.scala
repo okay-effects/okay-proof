@@ -28,7 +28,7 @@ class TypesSuite extends munit.FunSuite:
     assertEquals(c.states("spent").init, Value.D(BigDecimal("0.00")))
     val t = Types.tests(c, Examples.paymentsTests).fold(ps => fail(ps.mkString("\n")), identity).head
     assertEquals(t.caller, Value.E("User", "ann"))
-    assertEquals(t.args("amount"), Value.D(BigDecimal("50.00")))
+    assertEquals(t.args("amount"), Data.Leaf(Value.D(BigDecimal("50.00"))))
     assertEquals(t.givens.head, TGiven("owns", List(Value.E("User", "ann"), Value.E("Account", "acc1")), Left(true)))
   }
 

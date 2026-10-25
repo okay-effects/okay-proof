@@ -14,7 +14,7 @@ import okay.scala3.*
 final class Prove(t: Theorize):
   /** an expression with the call's values in place of its variables */
   private def bind(e: TExpr, env: Map[String, Value]): TExpr = e match
-    case TExpr.Var(n, _) => TExpr.Lit(env(n))
+    case v @ TExpr.Var(n, _) => env.get(n).fold(v)(TExpr.Lit(_))
     case TExpr.Fact(n, as, s) => TExpr.Fact(n, as.map(bind(_, env)), s)
     case TExpr.State(n, as, s) => TExpr.State(n, as.map(bind(_, env)), s)
     case TExpr.Add(a, b, s) => TExpr.Add(bind(a, env), bind(b, env), s)
@@ -31,6 +31,8 @@ final class Prove(t: Theorize):
     case TCond.And(a, b) => TCond.And(bind(a, env), bind(b, env))
     case TCond.Or(a, b) => TCond.Or(bind(a, env), bind(b, env))
     case TCond.Not(a) => TCond.Not(bind(a, env))
+    case TCond.Every(x, l, b) => TCond.Every(x, l.copy(base = bind(l.base, env)), bind(b, env - x))
+    case TCond.Exists(x, l, b) => TCond.Exists(x, l.copy(base = bind(l.base, env)), bind(b, env - x))
 
   /** the theorem that `rule` decides `call`: its condition holding under `known` (checked by the evaluator first) */
   def decision[R[_]: Has[Infer]](rule: TRule, call: Call, known: Known): Thm ! R =
@@ -57,39 +59,72 @@ final class Prove(t: Theorize):
       if Eval.holds(a, Map.empty, known).contains(true) then
         holds[R](a, known).flatMap(x => Infer.step[R](Rule.OrI1(x, t.formula(b))))
       else holds[R](b, known).flatMap(y => Infer.step[R](Rule.OrI2(t.formula(a), y)))
-    case TCond.Holds(_, _) => Infer.assume[R](t.formula(c))
-    case TCond.Not(TCond.Holds(_, _)) => Infer.assume[R](t.formula(c))
+
+    case TCond.Every(x, l, body) => every[R](x, l, body, known)
+    case TCond.Exists(x, l, body) =>
+      val es = Eval.elements(l, Map.empty, known).getOrElse(Nil)
+      es.find(e => Eval.holds(bind(body, Map(x -> e)), Map.empty, known).contains(true)) match
+        case None => Infer.refuse[R](s"no element of ${l.name} holds")
+        case Some(e) =>
+          val v = Term.V(x, t.sort(l.elem))
+          for
+            m <- Infer.assume[R](t.member(l, t.term(e)))
+            pe <- holds[R](bind(body, Map(x -> e)), known)
+            both <- Infer.andI[R](m, pe)
+            ex <- Infer.step[R](Rule.ExI(v, F.And(t.member(l, v), t.formula(body)), t.term(e), both))
+          yield ex
     case _ => atom[R](t.formula(c), known)
 
-  /** the fact terms of a formula with their values: each a function fact or a state applied to constants */
-  private def factTerms(f: Formula, known: Known): List[(Term, Term)] =
-    val found = scala.collection.mutable.LinkedHashMap.empty[Term, Term]
-    def term(x: Term): Unit = x match
-      case ap @ Term.Ap(fn, as) if t.factFns.get(fn.name).contains(fn) =>
-        if !found.contains(ap) then found(ap) = valueOf(fn.name, as, known)
-      case Term.Ap(_, as) => as.foreach(term)
-      case _ => ()
-    def formula(g: Formula): Unit = g match
-      case F.Eq(a, b) => term(a); term(b)
-      case F.Lt(a, b) => term(a); term(b)
-      case F.Le(a, b) => term(a); term(b)
-      case F.P(_, as) => as.foreach(term)
-      case F.Not(a) => formula(a)
-      case F.And(a, b) => formula(a); formula(b)
-      case F.Or(a, b) => formula(a); formula(b)
-      case F.Imp(a, b) => formula(a); formula(b)
-      case _ => ()
-    formula(f)
-    found.toList
+  /**
+   * `∀x. list(base, x) ⇒ body`: the list given CLOSED — `∀e. list(base, e) ⇒ e = e0 ∨ … ∨ e(n-1)`, a hypothesis
+   * from the call — so for an `x` in the list it is one of the elements, by cases (`OrE`); in each case the body
+   * proved of that element and carried over to `x` by `Subst`; `x` then generalized (`AllI`)
+   */
+  private def every[R[_]: Has[Infer]](x: String, l: TList, body: TCond, known: Known): Thm ! R =
+    val es = Eval.elements(l, Map.empty, known).getOrElse(Nil)
+    val sortX = t.sort(l.elem)
+    val v = Term.V(x, sortX)
+    val p = t.formula(body)
+    def oneOf(y: Term): Formula =
+      if es.isEmpty then F.False else es.map(e => F.Eq(y, t.term(e)): Formula).reduceRight(F.Or(_, _))
+    val e0 = Term.V("§e", sortX)
+    val closure = F.All(e0, F.Imp(t.member(l, e0), oneOf(e0)))
+    /** `body(x)`, from `x = e`: the body of `e` carried over */
+    def carried(eq: Thm, e: Value): Thm ! R =
+      val r = Term.V("§r", sortX)
+      for
+        refl <- Infer.refl[R](v)
+        back <- Infer.subst[R](eq, r, F.Eq(r, v), refl) // e = x
+        pe <- holds[R](bind(body, Map(x -> e)), known)
+        px <- Infer.subst[R](back, v, p, pe)
+      yield px
+    /** `body(x)` from `x` one of `rest` */
+    def cases(d: Thm, rest: List[Value]): Thm ! R = rest match
+      case Nil => Infer.step[R](Rule.FalseE(d, p))
+      case List(e) => carried(d, e)
+      case e :: more =>
+        val restFormula = more.map(m => F.Eq(v, t.term(m)): Formula).reduceRight(F.Or(_, _))
+        for
+          first <- Infer.assume[R](F.Eq(v, t.term(e))).flatMap(carried(_, e))
+          others <- Infer.assume[R](restFormula).flatMap(cases(_, more))
+          both <- Infer.step[R](Rule.OrE(d, first, others))
+        yield both
+    for
+      c <- Infer.assume[R](closure)
+      inst <- Infer.allE[R](c, v)
+      m <- Infer.assume[R](t.member(l, v))
+      d <- Infer.impE[R](inst, m)
+      px <- cases(d, es)
+      imp <- Infer.impI[R](t.member(l, v), px)
+      all <- Infer.allI[R](v, imp)
+    yield all
 
-  /** a fact's or a state's value as a term, read back from what is known by its ground arguments */
-  private def valueOf(name: String, args: List[Term], known: Known): Term =
-    val key = FactRef(name, args.map(valueOfTerm))
+  /** a fact's or a state's value as a term: its arguments values already (`balance(acc1)`), read from what is known */
+  private def valueOf(fn: okay.proof.Fn, args: List[Term], known: Known): Option[Term] =
+    val key = FactRef(fn.name, args.map(valueOfTerm))
     known.facts.get(key) match
-      case Some(Answer.Is(v)) => t.term(v)
-      case _ => known.states.get(key) match
-        case Some(v) => t.term(v)
-        case None => throw IllegalStateException(s"no value of $key")
+      case Some(Answer.Is(v)) => Some(t.term(v))
+      case _ => known.states.get(key).map(t.term)
 
   private def valueOfTerm(x: Term): Value = x match
     case Term.I(v) => Value.I(v)
@@ -100,13 +135,34 @@ final class Prove(t: Theorize):
       case other => throw IllegalStateException(s"a constant of $other")
     case other => throw IllegalStateException(s"not a value: $other")
 
-  /** each ground fact term replaced by a variable of its own */
-  private def abstractTerms(f: Formula, ts: List[(Term, Term.V)]): Formula =
-    def term(x: Term): Term = ts.find(_._1 == x) match
-      case Some((_, v)) => v
-      case None => x match
-        case Term.Ap(fn, as) => Term.Ap(fn, as.map(term))
-        case other => other
+  private def isValue(x: Term): Boolean = x match
+    case Term.I(_) | Term.D(_) | Term.S(_) => true
+    case Term.Ap(fn, Nil) => true
+    case _ => false
+
+  /** an innermost fact term of a formula: a fact applied to values only */
+  private def innermost(f: Formula): Option[Term.Ap] =
+    def term(x: Term): Option[Term.Ap] = x match
+      case ap @ Term.Ap(fn, as) =>
+        as.iterator.flatMap(term).nextOption().orElse(Option.when(t.isFact(fn) && as.forall(isValue))(ap))
+      case _ => None
+    def go(g: Formula): Option[Term.Ap] = g match
+      case F.Eq(a, b) => term(a).orElse(term(b))
+      case F.Lt(a, b) => term(a).orElse(term(b))
+      case F.Le(a, b) => term(a).orElse(term(b))
+      case F.P(_, as) => as.iterator.flatMap(term).nextOption()
+      case F.Not(a) => go(a)
+      case F.And(a, b) => go(a).orElse(go(b))
+      case F.Or(a, b) => go(a).orElse(go(b))
+      case F.Imp(a, b) => go(a).orElse(go(b))
+      case _ => None
+    go(f)
+
+  /** `f` with every occurrence of the term `ft` replaced by `by` */
+  private def replace(f: Formula, ft: Term, by: Term): Formula =
+    def term(x: Term): Term = if x == ft then by else x match
+      case Term.Ap(fn, as) => Term.Ap(fn, as.map(term))
+      case other => other
     def go(g: Formula): Formula = g match
       case F.Eq(a, b) => F.Eq(term(a), term(b))
       case F.Lt(a, b) => F.Lt(term(a), term(b))
@@ -119,31 +175,38 @@ final class Prove(t: Theorize):
       case other => other
     go(f)
 
-  /** an atom, closed but for its facts: computed with their values, then each value turned back into its fact */
+  /**
+   * an atom, closed but for its facts: each innermost fact replaced by its value, again and again, down to a formula
+   * of values (`account(call)` by `acc1`, then `balance(acc1)` by `300`); that one proved — computed, or a relation
+   * the guard knows assumed — and each step taken back by `Subst` with its fact's equation reversed, the last first
+   */
   private def atom[R[_]: Has[Infer]](f: Formula, known: Known): Thm ! R =
-    val facts = factTerms(f, known)
-    val xs = facts.zipWithIndex.map { case ((ft, _), i) => (ft, Term.V(s"§$i", Logic.sortOf(ft).get)) }
-    val g = abstractTerms(f, xs)
-    val values = facts.map(_._2)
-    val vars = xs.map(_._2)
-    def withValues(from: Int): Formula = // g with the facts before `from` in place, the values from it on
-      vars.zipWithIndex.foldLeft(g) { case (h, (x, i)) =>
-        Logic.subst(h, x, if i < from then facts(i)._1 else values(i))
-      }
-    val start = closed[R](withValues(0))
-    facts.indices.foldLeft(start) { (p, i) =>
-      // f_i: the facts before i in place, x_i free, the values after it
-      val fi = vars.zipWithIndex.foldLeft(g) { case (h, (x, j)) =>
-        if j == i then h else Logic.subst(h, x, if j < i then facts(j)._1 else values(j))
-      }
-      for
-        th <- p
-        eq <- reversed[R](facts(i)._1, values(i))
-        next <- Infer.subst[R](eq, vars(i), fi, th)
-      yield next
-    }
+    val steps = scala.collection.mutable.ListBuffer.empty[(Formula, Term.V, Term, Term)] // template, x, fact, value
+    var g = f
+    var n = 0
+    var stuck: Option[String] = None
+    while stuck.isEmpty && innermost(g).isDefined do
+      val ft = innermost(g).get
+      valueOf(ft.fn, ft.args, known) match
+        case None => stuck = Some(s"no value of $ft")
+        case Some(v) =>
+          val x = Term.V(s"§$n", Logic.sortOf(ft).get)
+          n += 1
+          val template = replace(g, ft, x)
+          steps += ((template, x, ft, v))
+          g = Logic.subst(template, x, v)
+    stuck match
+      case Some(why) => Infer.refuse[R](why)
+      case None =>
+        steps.reverseIterator.foldLeft(closed[R](g)) { case (p, (template, x, ft, v)) =>
+          for
+            th <- p
+            eq <- reversed[R](ft, v)
+            next <- Infer.subst[R](eq, x, template, th)
+          yield next
+        }
 
-  /** `v = fact`, from the fact's equation `fact = v`, assumed */
+  /** `v = fact`, from the fact's equation `fact = v`, assumed: what the guard knows of it */
   private def reversed[R[_]: Has[Infer]](fact: Term, v: Term): Thm ! R =
     val x = Term.V("§=", Logic.sortOf(fact).get)
     for
@@ -161,6 +224,8 @@ final class Prove(t: Theorize):
         if provable(a) then closed[R](a).flatMap(x => Infer.step[R](Rule.OrI1(x, b)))
         else closed[R](b).flatMap(y => Infer.step[R](Rule.OrI2(a, y)))
       case F.And(a, b) => for x <- closed[R](a); y <- closed[R](b); t <- Infer.andI[R](x, y) yield t
+      // a relation of values the guard knows (the evaluator read it true, or false under `not`): a hypothesis
+      case F.P(_, _) | F.Not(F.P(_, _)) => Infer.assume[R](f)
       case _ => Infer.refuse[R](s"not provable by computation: $f")
 
   private def provable(f: Formula): Boolean =

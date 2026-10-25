@@ -96,19 +96,22 @@ type      ::= "type" Name                                   -- an entity sort: v
 fact      ::= "fact" name "(" params ")" (":" sort)? ("from" name)?
 state     ::= "state" name "(" params ")" ":" sort ("per" window)? "=" literal
 call      ::= "call" tool "(" params ")" | "import" "tools" "from" text   -- a server's JSON schema
+record    ::= "type" Name "=" "{" field ("," field)* "}"
+param     ::= name "?"? ":" sort                                    -- `?`: optional
 rule      ::= verdict target ("when" cond)? ("then" update ("," update)*)? ("because" text)?
 count     ::= "count" target ("when" cond)? "then" update ("," update)*
 verdict   ::= "allow" | "ask" | "deny"
 target    ::= tool | server ".*" | "*"
 cond      ::= cond "and" cond | cond "or" cond | "not" cond | "(" cond ")" | atom
-atom      ::= expr cmp expr | expr "in" "[" exprs "]" | name "(" exprs ")"      -- a relation fact
+atom      ::= "has" "(" path ")" | ("every" | "some") name "in" path ":" cond
+            | expr cmp expr | expr "in" "[" exprs "]" | name "(" exprs ")"      -- a relation fact
             | expr ("starts" | "ends" | "contains") expr                         -- texts
 cmp       ::= "=" | "!=" | "<" | "<=" | ">" | ">="
 expr      ::= expr ("+" | "-") expr | expr "*" literal | "(" expr ")" | literal | var | name "(" exprs ")"
 update    ::= name "(" exprs ")" ("=" | "+=" | "-=") expr
 window    ::= "minute" | "hour" | "day"
 test      ::= "test" text "given" given ("," given)* "when" name "calls" tool "(" args ")" "expect" verdict text?
-sort      ::= "Int" | "Dec" | "Text" | Name
+sort      ::= "Int" | "Dec" | "Text" | Name | "List" "[" sort "]"
 literal   ::= int | dec | text
 ```
 
@@ -135,6 +138,36 @@ or not is a relation fact (`fact verified(user: User)`), not a value. The checke
 - a `test` naming a call, an argument or a fact the policy does not have.
 
 `Int` and `Dec` are not mixed silently: `count * 1.5` is an error; `dec(count)` converts.
+
+## Structured calls: records, lists, optional arguments
+
+An MCP tool's arguments are JSON: objects, arrays, fields that may be missing. So:
+
+```text
+type Item = { sku: Text, qty: Int, price: Dec, note?: Text }       -- a record type; `?` an optional field
+type Address = { country: Text, zip?: Text }
+
+call shop.order(items: List[Item], shipping: Address, coupon?: Text, tags: List[Text])
+
+allow shop.order
+  when count(items) <= 20
+   and every i in items: (i.qty <= 10 and i.price <= 500.00)
+   and shipping.country in ["DE", "PL"]
+   and (not has(coupon) or coupon starts "VIP")
+   and not (some t in tags: t = "test")
+```
+
+- a record's fields by a path: `shipping.country`, `i.price`; `has(coupon)`, `has(shipping.zip)` — is it there;
+- a list: `count(items)`; `every x in items: ...`, `some x in items: ...` (a list of records or of values);
+- a missing optional argument is UNKNOWN: an atom using it fails (a rule needing it does not apply) — unless the rule
+  asks `has(...)` first, which is always known.
+
+In the logic THE CALL IS AN ENTITY, `call`, and its arguments are facts about it, given by the guard from the call
+itself — hypotheses of the decision's theorem like any fact: `arg:amount(call) = 50`, `has:coupon(call)` or its
+negation, `arg:items#count(call) = 2`, `arg:items(call, #items0)` with `Item.qty(#items0) = 3`. A list is also given
+CLOSED: `∀e. arg:items(call, e) ⇒ e = #items0 ∨ e = #items1` — so `every` is proved by cases over the elements, each
+transported by `Subst`; `some` by its witness (`∃` in). The verdicts are `allow:tool(caller, call)`. So the audit sees
+exactly the arguments a decision rested on.
 
 ## Decisions
 
@@ -216,6 +249,9 @@ full re-check (≈60 µs) is the audit's, not each call's.
 Measured 2026-10-25 (`PolicyBench`, `SpeedSuite`), the example policy: parsed and checked 20 µs; a decision allowed and
 proved 8.4 µs on the JVM, ~48 µs in Node (Scala.js, the tests' unoptimized link); an ask 4.0 µs, the default deny
 explained 2.7 µs; its certificate (4.6 KB) written 53 µs — the costliest part, worth making faster.
+With the call's arguments as facts (structured calls): a decision 13.8 µs, an ask 6.7 µs, the default deny 6.1 µs;
+the certificate 7.8 KB, written 90 µs. Structured decisions' certificates (every by cases, some by a witness) checked
+by okay-lean's `okay-check` too.
 
 ## In the browser
 

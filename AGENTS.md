@@ -64,3 +64,10 @@
   `starts`/`ends`/`contains` are the kernel's `take`/`takeRight`/`indexOf` (added 2026-10-25, by code points — and in
   okay-lean's Check/Arith.lean, commit 55f4bf1; DifferentialSuite has their certificates: 856, all agreed). Decision
   8.4 µs JVM; certificate 53 µs.
+- STRUCTURED CALLS (2026-10-25): records (`type Item = { sku: Text, note?: Text }`), `List[T]`, optional args (`x?:`).
+  THE CALL IS AN ENTITY `call`: its arguments are facts of it (`arg:amount(call)`, `has:arg:coupon(call)`,
+  `arg:items(call, e)`, `Item.qty(e)`, `arg:items#count(call)`) made by `Call.facts` from the call's `Data`
+  (`Call.fromJson` for MCP's JSON); verdicts `allow:tool(caller, call)`. `every` proved by the list given CLOSED
+  (`∀e. items(call, e) ⇒ e = #0 ∨ …`, a hypothesis) + `OrE` + `Subst`; `some` by `ExI`. Atoms: innermost fact first
+  replaced by its value, then each step back by `Subst` (`account(call) = acc1`, then `balance(acc1) = 300`).
+  A malformed call (missing field, wrong kind) is denied. Decision 13.8 µs; certificate 7.8 KB, 90 µs.

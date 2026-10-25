@@ -21,7 +21,7 @@ class SourcesSuite extends munit.FunSuite:
 
   val ann = Value.E("User", "ann")
   val acc = Value.E("Account", "acc1")
-  val call = Call("pay", ann, Map("account" -> acc, "amount" -> Value.D(BigDecimal("40.00"))))
+  val call = Call.flat("pay", ann, Map("account" -> acc, "amount" -> Value.D(BigDecimal("40.00"))))
   val session = Source.of {
     case FactRef("verified", List(`ann`)) => Some(Answer.Holds(true))
     case _ => None
@@ -59,7 +59,7 @@ class SourcesSuite extends munit.FunSuite:
     yield
       for d <- List(missing, late, failed) do
         assertEquals(d.verdict, Verdict.Deny)
-        assert(d.reasons.exists(_.contains("unknown: risk(ann)")), d.reasons.toString)
+        assert(d.reasons.exists(r => r.contains("risk(ann)") && r.contains("unknown")), d.reasons.toString)
   }
 
   test("a source answers only its own facts, of their sort: a lie about another's fact, or a wrong sort, dropped") {

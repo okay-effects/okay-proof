@@ -37,17 +37,24 @@ object Decide:
       case None => pure(Decision(Verdict.Deny, Nil, None, List(s"no rule decides ${call.tool}"), Nil))
       case Some(rules) =>
         val env = call.env
-        val counts = policy.checked.countsOf.getOrElse(call.tool, Nil)
-        def read(when: Option[TCond], updates: List[TUpdate]) =
-          when.toList.flatMap(Eval.refs(_, env)) ++ updates.flatMap(u => u.key.flatMap(Eval.refs(_, env)) ++
-            Eval.refs(u.value, env) ++ List(true -> Eval.ref(u.state, u.key, env)))
-        val needed = (rules.flatMap(r => read(r.when, r.updates)) ++ counts.flatMap(c => read(c.when, c.updates)))
-          .distinct
-        val (states, facts) = needed.partition(_._1)
-        for
-          fs <- Facts.ask[R](facts.map(_._2))
-          ss <- States.read[R](states.map(_._2))
-        yield decide(policy, call, rules, counts, Known(fs, ss))
+        val supplied = Call.facts(policy.checked, call)
+        if supplied.malformed.nonEmpty then
+          pure(Decision(Verdict.Deny, Nil, None, supplied.malformed.map("a malformed call: " + _), Nil))
+        else
+          val counts = policy.checked.countsOf.getOrElse(call.tool, Nil)
+          val fromCall = Known(supplied.facts, Map.empty, supplied.lists)
+          def read(when: Option[TCond], updates: List[TUpdate]) =
+            when.toList.flatMap(Eval.refs(_, env, fromCall)) ++ updates.flatMap(u =>
+              u.key.flatMap(Eval.refs(_, env, fromCall)) ++ Eval.refs(u.value, env, fromCall) ++
+                Eval.ref(u.state, u.key, env, fromCall).map(true -> _))
+          val needed = (rules.flatMap(r => read(r.when, r.updates)) ++ counts.flatMap(c => read(c.when, c.updates)))
+            .distinct
+          // asked: the policy's own facts and states; the call's facts it gave itself
+          val (states, facts) = needed.filter((st, r) => st || policy.checked.facts.contains(r.name)).partition(_._1)
+          for
+            fs <- Facts.ask[R](facts.map(_._2))
+            ss <- States.read[R](states.map(_._2))
+          yield decide(policy, call, rules, counts, Known(fs ++ supplied.facts, ss, supplied.lists))
 
   /** the decision, with what is known */
   def decide(policy: Compiled, call: Call, rules: List[TRule], counts: List[TCount], known: Known): Decision =
@@ -83,7 +90,7 @@ object Decide:
   extension (l: List[String]) private def ifEmpty(d: => List[String]): List[String] = if l.isEmpty then d else l
 
   private def change(u: TUpdate, env: Map[String, Value], known: Known): Option[StateChange] =
-    Eval.value(u.value, env, known).map(StateChange(Eval.ref(u.state, u.key, env), u.change, _))
+    for v <- Eval.value(u.value, env, known); r <- Eval.ref(u.state, u.key, env, known) yield StateChange(r, u.change, v)
 
   /** decided, and its changes made if allowed: what a guard does for a call */
   def enforce[R[_]](policy: Compiled, call: Call)(using In[Facts, R], In[States, R]): Decision ! R =

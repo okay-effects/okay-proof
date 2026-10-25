@@ -10,6 +10,7 @@ object Printer:
 
   def decl(d: Decl): String = d match
     case Decl.Type(n, _) => s"type $n"
+    case Decl.Record(n, fs, _) => s"type $n = { ${params(fs)} }"
     case Decl.Fact(n, ps, result, source, _) =>
       s"fact $n(${params(ps)})" + result.fold("")(s => s": $s") + source.fold("")(s => s" from $s")
     case Decl.State(n, ps, s, window, init, _) =>
@@ -27,7 +28,8 @@ object Printer:
         args.map(a => s"${a.name}: ${expr(a.value)}").mkString(", ") + s")\n  expect ${expect.word}" +
         because.fold("")(b => s" ${quote(b)}")
 
-  private def params(ps: List[Param]): String = ps.map(p => s"${p.name}: ${p.sort}").mkString(", ")
+  private def params(ps: List[Param]): String =
+    ps.map(p => s"${p.name}${if p.optional then "?" else ""}: ${p.sort}").mkString(", ")
 
   private def update(u: Update): String =
     s"${u.state}(${u.key.map(expr).mkString(", ")}) ${u.change.text} ${expr(u.value)}"
@@ -54,13 +56,16 @@ object Printer:
     case Cond.In(a, os, _) => s"${expr(a)} in [${os.map(expr).mkString(", ")}]"
     case Cond.Holds(n, as, _) => s"$n(${as.map(expr).mkString(", ")})"
     case Cond.Text(a, op, b, _) => s"${expr(a)} ${op.word} ${expr(b)}"
+    case Cond.Has(path, _) => s"has($path)"
+    case Cond.Every(x, l, body, _) => s"every $x in $l: ${atomic(body)}"
+    case Cond.Exists(x, l, body, _) => s"some $x in $l: ${atomic(body)}"
 
   private def tight(c: Cond): String = c match
     case _: Cond.Or => s"(${cond(c)})"
     case _ => cond(c)
 
   private def atomic(c: Cond): String = c match
-    case _: Cond.Or | _: Cond.And => s"(${cond(c)})"
+    case _: Cond.Or | _: Cond.And | _: Cond.Every | _: Cond.Exists => s"(${cond(c)})"
     case _ => cond(c)
 
   def expr(e: Expr): String = e match
@@ -72,6 +77,8 @@ object Printer:
     case Expr.Add(a, b, _) => s"${expr(a)} + ${right(b)}"
     case Expr.Sub(a, b, _) => s"${expr(a)} - ${right(b)}"
     case Expr.Mul(a, b, _) => s"${factor(a)} * ${factor(b)}"
+    case Expr.ListLit(items, _) => items.map(expr).mkString("[", ", ", "]")
+    case Expr.RecLit(fields, _) => fields.map((n, v) => s"$n: ${expr(v)}").mkString("{ ", ", ", " }")
 
   private def right(e: Expr): String = e match
     case _: Expr.Add | _: Expr.Sub => s"(${expr(e)})"

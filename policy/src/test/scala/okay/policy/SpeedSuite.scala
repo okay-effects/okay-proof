@@ -8,7 +8,7 @@ class SpeedSuite extends munit.FunSuite:
     val policy = Compiled(Examples.payments).toOption.get
     val ann = Value.E("User", "ann")
     val acc1 = Value.E("Account", "acc1")
-    val call = Call("stripe.create_payment", ann, Map("account" -> acc1, "amount" -> Value.D(BigDecimal("50.00")),
+    val call = Call.flat("stripe.create_payment", ann, Map("account" -> acc1, "amount" -> Value.D(BigDecimal("50.00")),
       "currency" -> Value.T("usd")))
     val facts = Map(FactRef("owns", List(ann, acc1)) -> Answer.Holds(true),
       FactRef("balance", List(acc1)) -> Answer.Is(Value.D(BigDecimal("900.00"))))

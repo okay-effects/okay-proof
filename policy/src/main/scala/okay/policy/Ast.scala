@@ -12,9 +12,14 @@ final case class Problem(pos: Pos, message: String):
 enum Sort:
   case Int, Dec, Text
   case Entity(name: String)
+  /** a record type's: `type Item = { sku: Text, qty: Int }` */
+  case Rec(name: String)
+  case ListOf(elem: Sort)
 
   override def toString: String = this match
     case Entity(n) => n
+    case Rec(n) => n
+    case ListOf(e) => s"List[$e]"
     case s => s.productPrefix
 
 enum Cmp:
@@ -39,6 +44,9 @@ enum Expr:
   case Add(a: Expr, b: Expr, pos: Pos)
   case Sub(a: Expr, b: Expr, pos: Pos)
   case Mul(a: Expr, by: Expr, pos: Pos)
+  /** in a test's call: a list, a record */
+  case ListLit(items: List[Expr], pos: Pos)
+  case RecLit(fields: List[(String, Expr)], pos: Pos)
 
   def pos: Pos
 
@@ -53,6 +61,11 @@ enum Cond:
   case And(a: Cond, b: Cond)
   case Or(a: Cond, b: Cond)
   case Not(c: Cond, pos: Pos)
+  /** an optional argument or field given: `has(coupon)` */
+  case Has(path: String, pos: Pos)
+  /** each element of a list, or one of them: `every i in items: (...)` */
+  case Every(name: String, list: String, body: Cond, pos: Pos)
+  case Exists(name: String, list: String, body: Cond, pos: Pos)
 
 /** how a text is tested against another */
 enum TextOp:
@@ -86,7 +99,7 @@ enum Change:
 
 final case class Update(state: String, key: List[Expr], change: Change, value: Expr, pos: Pos)
 
-final case class Param(name: String, sort: Sort, pos: Pos)
+final case class Param(name: String, sort: Sort, pos: Pos, optional: Boolean = false)
 
 enum Window:
   case Minute, Hour, Day
@@ -108,6 +121,7 @@ final case class Arg(name: String, value: Expr, pos: Pos)
 
 enum Decl:
   case Type(name: String, pos: Pos)
+  case Record(name: String, fields: List[Param], pos: Pos)
   case Fact(name: String, params: List[Param], result: Option[Sort], source: Option[String], pos: Pos)
   case State(name: String, params: List[Param], sort: Sort, window: Option[Window], init: Expr, pos: Pos)
   case Call(tool: String, params: List[Param], pos: Pos)
@@ -123,6 +137,7 @@ enum Decl:
 /** A POLICY, as written */
 final case class Policy(name: String, decls: List[Decl]):
   def types: List[Decl.Type] = decls.collect { case d: Decl.Type => d }
+  def records: List[Decl.Record] = decls.collect { case d: Decl.Record => d }
   def facts: List[Decl.Fact] = decls.collect { case d: Decl.Fact => d }
   def states: List[Decl.State] = decls.collect { case d: Decl.State => d }
   def calls: List[Decl.Call] = decls.collect { case d: Decl.Call => d }
