@@ -208,6 +208,15 @@ Every verdict but the last is a THEOREM: `deny(call)`, `allow(call)`, `ask(call)
 theory from the call's facts. The last one, the default deny, is reported with the rules that were tried and why each
 did not apply (the facts it lacked, the comparison that failed) — a refusal needs no proof, an allowance always does.
 
+## In process: a service on effects, guarded with no proxy
+
+A service written on okay effects is guarded where it runs: its operations are already data. `Describe[E]` sees each
+operation of its effect as an action (`Described("payments.refund", args)`); `Guarded(policy, caller, program)` is an
+interceptor around the program — each operation decided before it runs: allowed, it runs and the policy's changes are
+made; denied, it does not, and the program fails with the reasons (`Fail % String`); asked, a person is (`Approval`,
+handled by whatever asks — a page, a chat, a queue, a test), and it runs if approved. The business logic knows its own
+effect and nothing of the guard; each decision is a theorem, given to `seen` for a journal.
+
 ## Layers
 
 An organization's policy, a team's, an agent's decide the same call (`Layers.combine`, top first, the bottom last). A
