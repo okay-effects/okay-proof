@@ -94,7 +94,7 @@ class TypesSuite extends munit.FunSuite:
 
   test("tests: unknown tools, arguments, facts; missing arguments") {
     def t(s: String) = Types.tests(ok(""), s"tests for p\ntest \"t\"\n  $s").left.toOption.toList.flatten.map(_.message)
-    assertEquals(t("given owns(ann, acc1) when ann calls send(amount: 1) expect allow"), List("an unknown tool send"))
+    assertEquals(t("given owns(ann, acc1) when ann calls send(amount: 1) expect allow"), Nil) // undeclared: allowed
     assertEquals(
       t("given owns(ann, acc1) when ann calls pay(account: acc1, amount: 1, currency: \"usd\", x: 1) expect allow"),
       List("pay has no argument x"))

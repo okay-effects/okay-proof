@@ -36,15 +36,14 @@ object Compiled:
  */
 object Decide:
   def apply[R[_]](policy: Compiled, call: Call)(using In[Facts, R], In[States, R]): Decision ! R =
-    policy.checked.rulesOf.get(call.tool) match
-      case None => pure(Decision(Verdict.Deny, Nil, None, List(s"no rule decides ${call.tool}"), Nil))
-      case Some(rules) =>
+    policy.checked.rulesFor(call.tool) match
+      case rules =>
         val env = call.env
         val supplied = Call.facts(policy.checked, call)
         if supplied.malformed.nonEmpty then
           pure(Decision(Verdict.Deny, Nil, None, supplied.malformed.map("a malformed call: " + _), Nil))
         else
-          val counts = policy.checked.countsOf.getOrElse(call.tool, Nil)
+          val counts = policy.checked.countsFor(call.tool)
           val fromCall = Known(supplied.facts, Map.empty, supplied.lists)
           def read(when: Option[TCond], updates: List[TUpdate]) =
             when.toList.flatMap(Eval.refs(_, env, fromCall)) ++ updates.flatMap(u =>
@@ -71,7 +70,9 @@ object Decide:
   /** the webhooks the notices name for an outcome of a call — its verdict, or later a person's or the time's: those on
    * that outcome, of the call's tool, whose condition holds over what the decision read */
   def notices(policy: Compiled, call: Call, outcome: NoticeOn, known: Known): List[String] =
-    policy.checked.notices.filter(n => n.on == outcome && n.tools.contains(call.tool) &&
+    policy.checked.notices.filter(n => n.on == outcome &&
+      (n.tools.contains(call.tool) || !policy.checked.calls.contains(call.tool) &&
+        policy.checked.open(n.source.target) && policy.checked.covers(n.source.target, call.tool)) &&
       n.when.forall(c => Eval.holds(c, call.env, known).contains(true))).flatMap(_.names).distinct
 
   /** the webhooks for what became of an asked call: approved, refused, timed out */

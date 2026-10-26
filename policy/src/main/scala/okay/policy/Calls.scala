@@ -65,7 +65,7 @@ object Call:
       case _ => bad += s"$where is not a $s"
     checked.calls.get(call.tool) match
       case Some(sig) => fields(sig.params, call.args, "arg:", Call.self, call.tool)
-      case None => bad += s"an unknown tool ${call.tool}"
+      case None => () // a tool the policy does not declare: its arguments unread, unknown to its rules
     Facts(out.toMap, lists.toMap, bad.toList)
 
   private def fits(s: Sort, v: Value): Boolean = (s, v) match

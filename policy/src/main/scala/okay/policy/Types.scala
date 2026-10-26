@@ -100,6 +100,22 @@ final case class Checked(policy: Policy, types: Set[String], records: Map[String
   /** the counts of `tool`'s calls */
   lazy val countsOf: Map[String, List[TCount]] = calls.keys.map(t => t -> counts.filter(_.tools.contains(t))).toMap
 
+  /** a target covers a tool: `*` every one, `server.*` its server's, a tool itself */
+  def covers(target: Target, tool: String): Boolean = target match
+    case Target.Any => true
+    case Target.Server(s) => tool.startsWith(s + ".")
+    case Target.Tool(t) => t == tool
+
+  /** a target that covers tools the policy does not declare */
+  def open(target: Target): Boolean = !target.isInstanceOf[Target.Tool]
+
+  /** the rules deciding `tool`: a declared one's; an undeclared one's — the open rules (`*`, `server.*`) covering it */
+  def rulesFor(tool: String): List[TRule] =
+    rulesOf.getOrElse(tool, rules.filter(r => open(r.source.target) && covers(r.source.target, tool)))
+
+  def countsFor(tool: String): List[TCount] =
+    countsOf.getOrElse(tool, counts.filter(c => open(c.source.target) && covers(c.source.target, tool)))
+
 /** THE TYPE CHECKER: every problem of a policy, each with its place — or the policy checked */
 object Types:
   /** the sort of `caller`: a policy that uses it declares `type User` */
@@ -250,16 +266,15 @@ object Types:
         case Target.Tool(t) =>
           if !sigs.calls.contains(t) then problem(pos, s"an unknown tool $t: declare it with `call`")
           List(t)
-        case Target.Server(s) =>
-          val ts = sigs.calls.keys.filter(_.startsWith(s + ".")).toList.sorted
-          if ts.isEmpty then problem(pos, s"no tool of the server $s is declared")
-          ts
+        case Target.Server(s) => sigs.calls.keys.filter(_.startsWith(s + ".")).toList.sorted
         case Target.Any => sigs.calls.keys.toList.sorted
       val common = tools.map(t => sigs.calls.get(t).fold(Map.empty[String,
         Field])(_.params.map(f => f.name -> f).toMap))
       val args = common.headOption.fold(Map.empty[String, Field])(first =>
         first.filter((n, f) => common.forall(_.get(n).exists(_.sort == f.sort))))
-      Option.when(tools.nonEmpty && tools.forall(sigs.calls.contains))(
+      // `*` and `server.*` may cover no declared tool: they decide the undeclared ones too
+      Option.when((tools.nonEmpty || !target.isInstanceOf[Target.Tool]) &&
+          tools.forall(sigs.calls.contains))(
         Scope(Map("caller" -> Sort.Entity(callerType), "tool" -> Sort.Text), args, sigs, target, tools))
 
     private def rule(r: Decl.Rule, index: Int, sigs: Sigs): Option[TRule] =
@@ -526,8 +541,8 @@ object Types:
       }
 
     private def test(t: Decl.Test, sigs: Sigs): Option[TTest] =
+      // a tool the policy does not declare: called with its arguments unread — the open rules and the default decide
       val call = sigs.calls.get(t.tool)
-      if call.isEmpty then problem(t.pos, s"an unknown tool ${t.tool}")
       val noVars = Scope(Map.empty, Map.empty, sigs, Target.Tool(t.tool), List(t.tool))
       def constant(e: Expr, s: Sort): Option[Value] =
         expr(e, noVars, Some(s)).flatMap(fit(_, s, e.pos)).flatMap {
@@ -582,4 +597,4 @@ object Types:
         fields(t.args.map(a => (a.name, a.value, a.pos)), c.params, s"${t.tool} has no argument",
           t.pos).toList.flatMap(_.toList)).toMap
       if !types(Types.callerType) then problem(t.pos, s"a test's caller is a ${Types.callerType}: declare the type")
-      Option.when(call.isDefined)(TTest(t.name, givens, callerValue, t.tool, args, t.expect, t.because, t))
+      Some(TTest(t.name, givens, callerValue, t.tool, args, t.expect, t.because, t))

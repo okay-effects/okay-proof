@@ -37,11 +37,10 @@ final class Prove(t: Theorize):
   /** the theorem that `rule` decides `call`: its condition holding under `known` (checked by the evaluator first) */
   def decision[R[_]: Has[Infer]](rule: TRule, call: Call, known: Known): Thm ! R =
     val env = call.env
-    val vars = t.vars(call.tool)
-    val values = vars.map(v => t.term(env(v.name)))
-    val axiom = Infer.axiom[R](t.axiomName(rule, call.tool))
+    val (name, values, when) = t.instance(rule, call.tool, t.term(env("caller")), t.term(env("call")))
+    val axiom = Infer.axiom[R](name)
     val instance = values.foldLeft(axiom)((p, v) => p.flatMap(th => Infer.allE[R](th, v)))
-    rule.when match
+    when match
       case None => instance
       case Some(c) =>
         val bound = bind(c, env)

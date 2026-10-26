@@ -40,6 +40,26 @@ final class Theorize(val checked: Checked):
 
   def axiomName(r: TRule, tool: String): String = s"rule ${r.index + 1} (line ${r.source.pos.line}) on $tool"
 
+  /** a tool the policy declares: its own verdicts; any other, the open rules' over the tool as a variable */
+  def declared(tool: String): Boolean = checked.calls.contains(tool)
+
+  /** the verdict's predicate of the tools not declared: over the caller, the call, and the tool's name */
+  def openVerdict(v: Verdict): Pred = Pred(s"${v.word}:*", List(sort(callerSort), sort(callSort), okay.proof.Sort.Str))
+  def openVars: List[Term.V] = vars("") :+ Term.V("tool", okay.proof.Sort.Str)
+  def openName(r: TRule): String = s"rule ${r.index + 1} (line ${r.source.pos.line}) on any tool"
+
+  /** an open rule's condition for an undeclared tool: `server.*`'s says the tool is the server's */
+  def openWhen(r: TRule): Option[TCond] = r.source.target match
+    case Target.Server(s) =>
+      val of = TCond.Text(TExpr.Var("tool", Sort.Text), TextOp.Starts, TExpr.Lit(Value.T(s + ".")))
+      Some(r.when.fold(of)(TCond.And(of, _)))
+    case _ => r.when
+
+  /** what a decision on `tool` by `r` instantiates: the axiom's name, the values of its variables, its condition */
+  def instance(r: TRule, tool: String, caller: Term, call: Term): (String, List[Term], Option[TCond]) =
+    if declared(tool) then (axiomName(r, tool), List(caller, call), r.when)
+    else (openName(r), List(caller, call, Term.S(tool)), openWhen(r))
+
   /** the term of an expression, its variables free */
   def term(e: TExpr): Term = e match
     case TExpr.Lit(v) => term(v)
@@ -95,10 +115,15 @@ final class Theorize(val checked: Checked):
     val body = r.when.map(c => named(tool)(formula(c)))
     axiomName(r, tool) -> Formula.all(vars(tool)*)(body.fold(head)(_ implies head))
 
-  val theory: Theory = Theory(checked.policy.name, (for
+  /** an open rule's axiom for the tools not declared */
+  def openAxiom(r: TRule): (String, Formula) =
+    val head = F.P(openVerdict(r.verdict), openVars)
+    openName(r) -> Formula.all(openVars*)(openWhen(r).map(formula).fold(head)(_ implies head))
+
+  val theory: Theory = Theory(checked.policy.name, ((for
     r <- checked.rules
     t <- r.tools
-  yield axiom(r, t))*)
+  yield axiom(r, t)) ++ checked.rules.filter(r => checked.open(r.source.target)).map(openAxiom))*)
 
   /** the kernel of the policy: the only maker of its decisions */
   val kernel: Kernel = Kernel(theory)

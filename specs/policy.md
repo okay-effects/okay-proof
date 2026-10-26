@@ -187,6 +187,13 @@ if its condition holds under the facts. Then:
 3. otherwise, if an `ask` applies, a human is asked;
 4. otherwise the policy's DEFAULT: `default allow | ask | deny`, deny if none is written (fail closed).
 
+A TOOL THE POLICY DOES NOT DECLARE (arbitrary MCP servers: their tools are not known in advance) is decided by the
+OPEN rules — those whose target is `*`, or `server.*` when the guard passes `server.tool` — then by the default. Its
+arguments are not declared, so unread: an atom on one is unknown and its rule does not apply; `tool` and `caller` are
+known. In the logic an open rule has, beside its axioms for the declared tools, one for any other —
+`∀ caller, call, tool. C ⇒ allow:*(caller, call, tool)`, `server.*`'s condition saying `tool starts "server."` — so
+such a decision is a theorem too. Tests may call an undeclared tool.
+
 A rule's verdict is a theorem. The default's is not: that no rule applied cannot in general be proved (an unknown fact
 is not a false one), so a default is REPORTED — `Decision.byDefault`, its verdict, and why each rule did not apply —
 and a policy with `default allow` allows, unproved, what no rule speaks of. Write `default allow` knowingly; with it, an
