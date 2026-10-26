@@ -51,7 +51,7 @@ class DecideSuite extends munit.FunSuite:
     assertEquals(asked.verdict, Verdict.Ask)
     assertEquals(asked.reasons, List("a large payment"))
     assert(asked.theorem.exists(_.concl.toString.startsWith("ask:stripe.create_payment")))
-    assertEquals(decide(pay("50.00", currency = "gbp")).verdict, Verdict.Ask) // the ask rule does not look at it
+    assertEquals(decide(pay("50.00", currency = "gbp")).verdict, Verdict.Deny) // small: no ask; no allow for gbp
     val denied = decide(pay("50.00", currency = "gbp"), known.updated(FactRef("owns", List(ann, acc1)),
       Answer.Holds(false)))
     assertEquals(denied.verdict, Verdict.Deny)
@@ -138,7 +138,8 @@ class DecideSuite extends munit.FunSuite:
     |allow fs.read
     |allow fs.write
     |  when path starts home(caller) and not (path ends ".env") and not (path contains "/../") and writes(caller) < 2
-    |ask fs.write when path starts home(caller) because "too many writes"
+    |ask fs.write when path starts home(caller) and (writes(caller) >= 2 or path contains "/../")
+    |  because "too many writes"
     |deny fs.write when path ends ".env" because "secrets"
     |count fs.write then writes(caller) += 1
     |""".stripMargin).fold(ps => fail(ps.mkString("\n")), identity)

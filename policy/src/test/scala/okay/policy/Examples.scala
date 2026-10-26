@@ -30,6 +30,7 @@ object Examples:
       |
       |ask stripe.create_payment
       |  when owns(caller, account) and amount <= 5000.00
+      |   and (amount > 500.00 or spent(caller) + amount > 2000.00)
       |  because "a large payment"
       |
       |deny *

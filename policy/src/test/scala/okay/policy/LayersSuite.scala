@@ -35,3 +35,19 @@ class LayersSuite extends munit.FunSuite:
     assert(org.checked.calls("list").reads && !org.checked.calls("pay").reads)
     assert(Printer(org.checked.policy).contains("call list() reads"))
   }
+
+  test("an ASK is stronger than an ALLOW: `allow github.*` with `ask github.create_pull_request` asks") {
+    val p = compile("""policy gh
+      |type User
+      |call github.create_pull_request(title: Text)
+      |call github.list_issues()
+      |allow github.*
+      |ask github.create_pull_request because "a pull request is a person's"
+      |""".stripMargin)
+    val pr = decide(p, Call.flat("github.create_pull_request", ann, Map("title" -> Value.T("Fix"))))
+    assertEquals((pr.verdict, pr.reasons), (Verdict.Ask, List("a pull request is a person's")))
+    assert(pr.theorem.isDefined)
+    assertEquals(decide(p, Call.flat("github.list_issues", ann, Map.empty)).verdict, Verdict.Allow)
+    assertEquals(decide(p, Call.flat("github.delete_repo", ann, Map.empty)).verdict, Verdict.Allow) // undeclared, open
+  }
+

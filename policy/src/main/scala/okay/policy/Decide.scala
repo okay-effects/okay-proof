@@ -31,7 +31,7 @@ object Compiled:
 
 /**
  * DECIDING A CALL: the facts and states its candidate rules read, asked at once (`Facts`, `States`); each rule
- * evaluated; the verdict by precedence — a deny, then an allow with a condition, then an ask, else the default deny;
+ * evaluated; the verdict by precedence — a deny, then an ask, then an allow, else the policy's default;
  * the winning rule's decision proved by the kernel. A rule whose proof the kernel refuses does not apply: fail closed.
  */
 object Decide:
@@ -97,10 +97,10 @@ object Decide:
       else Decision(v, r :: with_.filterNot(_ eq r), Some(thm), with_.flatMap(_.because).distinct, changes.flatten)
     first(Verdict.Deny) match
       case Some((r, Right(t))) => made(Verdict.Deny, r, t)
-      case _ => first(Verdict.Allow) match
-        case Some((r, Right(t))) => made(Verdict.Allow, r, t)
-        case _ => first(Verdict.Ask) match
-          case Some((r, Right(t))) => made(Verdict.Ask, r, t)
+      case _ => first(Verdict.Ask) match
+        case Some((r, Right(t))) => made(Verdict.Ask, r, t)
+        case _ => first(Verdict.Allow) match
+          case Some((r, Right(t))) => made(Verdict.Allow, r, t)
           case _ =>
             val why = rules.filter(_.when.isDefined).flatMap { r =>
               val where = s"${r.verdict.word} (line ${r.source.pos.line})"

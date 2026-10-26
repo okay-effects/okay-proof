@@ -57,6 +57,7 @@ allow stripe.create_payment
 
 ask stripe.create_payment
   when owns(caller, account) and amount <= 5000.00
+   and (amount > 500.00 or spent(caller) + amount > 2000.00)
   because "a large payment"
 
 deny *
@@ -183,8 +184,9 @@ For a call, the rules whose target matches it (the tool's own, its server's `.*`
 if its condition holds under the facts. Then:
 
 1. if a `deny` applies, the call is denied;
-2. otherwise, if an `allow` applies, it is allowed — an `allow` with no condition always applies;
-3. otherwise, if an `ask` applies, a human is asked;
+2. otherwise, if an `ask` applies, a human is asked — an ask is stronger than an allow: `allow github.*` with
+   `ask github.create_pull_request` asks for a pull request;
+3. otherwise, if an `allow` applies, it is allowed — an `allow` with no condition always applies;
 4. otherwise the policy's DEFAULT: `default allow | ask | deny`, deny if none is written (fail closed).
 
 A TOOL THE POLICY DOES NOT DECLARE (arbitrary MCP servers: their tools are not known in advance) is decided by the
@@ -196,8 +198,7 @@ such a decision is a theorem too. Tests may call an undeclared tool.
 
 A rule's verdict is a theorem. The default's is not: that no rule applied cannot in general be proved (an unknown fact
 is not a false one), so a default is REPORTED — `Decision.byDefault`, its verdict, and why each rule did not apply —
-and a policy with `default allow` allows, unproved, what no rule speaks of. Write `default allow` knowingly; with it, an
-`ask` still asks (the default applies only when no rule does), where an `allow *` would have won over it.
+and a policy with `default allow` allows, unproved, what no rule speaks of. Write `default allow` knowingly.
 
 Among several applying rules of one verdict, all their updates are made; the `because` texts are all reported. A
 `count` decides nothing: its updates are made for every call of its target that goes ahead — allowed, or asked and
