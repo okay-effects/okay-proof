@@ -26,13 +26,15 @@ class StructuredSuite extends munit.FunSuite:
   val ann = Value.E("User", "ann")
 
   def item(sku: String, qty: Int, price: String, note: Option[String] = None): Data = Data.Rec(Map(
-    "sku" -> Data.Leaf(Value.T(sku)), "qty" -> Data.Leaf(Value.I(qty)), "price" -> Data.Leaf(Value.D(BigDecimal(price))))
+    "sku" -> Data.Leaf(Value.T(sku)), "qty" -> Data.Leaf(Value.I(qty)),
+    "price" -> Data.Leaf(Value.D(BigDecimal(price))))
     ++ note.map(n => "note" -> Data.Leaf(Value.T(n))))
   def order(items: List[Data], country: String = "DE", coupon: Option[String] = None, tags: List[String] = Nil) =
     Call("shop.order", ann, Map("items" -> Data.Lst(items),
       "shipping" -> Data.Rec(Map("country" -> Data.Leaf(Value.T(country)))),
       "tags" -> Data.Lst(tags.map(t => Data.Leaf(Value.T(t))))) ++ coupon.map(c => "coupon" -> Data.Leaf(Value.T(c))))
-  val notBlocked = (skus: List[String]) => skus.map(s => FactRef("blocked", List(Value.T(s))) -> Answer.Holds(false)).toMap
+  val notBlocked = (skus: List[String]) => skus.map(s => FactRef("blocked",
+    List(Value.T(s))) -> Answer.Holds(false)).toMap
 
   type Row[X] = (States + Facts)[X]
   def decide(c: Call, facts: Map[FactRef, Answer] = notBlocked(List("a", "b", "c", "x"))) =
@@ -55,7 +57,8 @@ class StructuredSuite extends munit.FunSuite:
     assertEquals(dear.verdict, Verdict.Ask) // SOME: proved by its witness
     assertEquals(dear.reasons, List("an expensive item"))
     assert(dear.theorem.isDefined)
-    val blocked = decide(order(List(item("a", 1, "1.00"))), Map(FactRef("blocked", List(Value.T("a"))) -> Answer.Holds(true)))
+    val blocked = decide(order(List(item("a", 1, "1.00"))), Map(FactRef("blocked",
+      List(Value.T("a"))) -> Answer.Holds(true)))
     assertEquals(blocked.verdict, Verdict.Deny)
   }
 
@@ -97,7 +100,8 @@ class StructuredSuite extends munit.FunSuite:
     assertEquals(problems("allow shop.order when count(shipping) > 1"), List("count of a list only: shipping"))
     assertEquals(problems("allow shop.order when every items in items: items.qty > 1"),
       List("items is taken: an element needs a name of its own"))
-    assertEquals(problems("fact f(xs: List[Text])"), List("a fact's parameter xs is a number, a text or an entity, not List[Text]"))
+    assertEquals(problems("fact f(xs: List[Text])"),
+      List("a fact's parameter xs is a number, a text or an entity, not List[Text]"))
   }
 
   test("tests write calls with records and lists, optional fields left out") {
@@ -113,11 +117,12 @@ class StructuredSuite extends munit.FunSuite:
       |""".stripMargin
     val outcomes = Tests.run(policy, tests).fold(ps => fail(ps.mkString("\n")), identity)
     assert(outcomes.forall(_.passed), outcomes.mkString("\n"))
-    assertEquals(Types.tests(policy.checked, tests.replace("qty: 1, price: 5.00", "price: 5.00")).left.map(_.map(_.message)),
+    assertEquals(Types.tests(policy.checked, tests.replace("qty: 1, price: 5.00",
+      "price: 5.00")).left.map(_.map(_.message)),
       Left(List("the call's argument qty is missing")))
   }
 
-  test("BOOL arguments: a condition by themselves; from JSON's true and false; a field the policy does not know, left out") {
+  test("BOOL arguments, conditions by themselves; from JSON's true and false; a field not declared, left out") {
     val p = Compiled("""policy files
       |type User
       |type Opts = { force: Bool, verbose?: Bool }
@@ -127,7 +132,8 @@ class StructuredSuite extends munit.FunSuite:
     def run(args: String) =
       val c = Call.fromJson(p.checked, "fs.delete", ann, Json.parse(args).toOption.get)
       okay.scala3.run(States.Memory(p.checked).handler(Facts.known(Map.empty)(Decide[Row](p, c))))
-    assertEquals(run("""{"path": "/etc/x", "dry_run": true, "opts": {"force": true}, "extra": [1, 2]}""").verdict, Verdict.Allow)
+    assertEquals(run("""{"path": "/etc/x", "dry_run": true, "opts": {"force": true}, "extra": [1, 2]}""").verdict,
+      Verdict.Allow)
     assertEquals(run("""{"path": "/tmp/x", "dry_run": false, "opts": {"force": false, "colour": "red"}}""").verdict,
       Verdict.Allow)
     assertEquals(run("""{"path": "/tmp/x", "dry_run": false, "opts": {"force": true}}""").verdict, Verdict.Deny)

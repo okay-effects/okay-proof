@@ -55,7 +55,8 @@ object Omega:
 
   /** a premise's rows: its comparison over `Int`, an equation as two */
   private def rowsOf(n: Node, f: Formula): List[Row] = Linear.comparison(f) match
-    case Some((form, Linear.Kind.Equal, Sort.Int)) => List(Row(form, Map(n -> one)), Row(form * one.negate, Map(n -> one.negate)))
+    case Some((form, Linear.Kind.Equal, Sort.Int)) => List(Row(form, Map(n -> one)), Row(form * one.negate,
+      Map(n -> one.negate)))
     case Some((form, _, Sort.Int)) => List(Row(form, Map(n -> one)))
     case _ => Nil
 
@@ -104,7 +105,8 @@ object Omega:
         if g.compareTo(BigInteger.ONE) <= 0 then r
         else
           val gd = JDec(g)
-          Row(Lin(r.form.coeffs.view.mapValues(_.divide(gd)).toMap, floorDiv(r.form.const, gd)), Map(Tight(r.prov) -> one))
+          Row(Lin(r.form.coeffs.view.mapValues(_.divide(gd)).toMap, floorDiv(r.form.const, gd)),
+            Map(Tight(r.prov) -> one))
 
     def refute(input: Vector[Row]): Option[Ref] =
       budget -= 1

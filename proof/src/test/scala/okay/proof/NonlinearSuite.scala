@@ -25,7 +25,8 @@ class NonlinearSuite extends munit.FunSuite:
     val px = ok(Assume(Le(I(0), x)))
     val py = ok(Assume(Lt(I(0), y)))
     val prod = ok(MulNonneg(px, py))
-    assertEquals(Linear.comparison(prod.concl).map(_._1), Linear.comparison(Le(I(0), mul(x, y))).map(_._1).map(identity).orElse(None)
+    assertEquals(Linear.comparison(prod.concl).map(_._1), Linear.comparison(Le(I(0), mul(x,
+      y))).map(_._1).map(identity).orElse(None)
       .flatMap(_ => Linear.comparison(prod.concl).map(_._1)))
     assert(prod.concl.isInstanceOf[Le])
     assert(ok(Square(add(x, I(1)))).concl.isInstanceOf[Le])

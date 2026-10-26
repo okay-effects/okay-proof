@@ -26,7 +26,8 @@ class SourcesSuite extends munit.FunSuite:
     case FactRef("verified", List(`ann`)) => Some(Answer.Holds(true))
     case _ => None
   }
-  def after[A](ms: Long, a: => A): Map[FactRef, Answer] ! Async = Async.sleep[Async](ms).map(_ => a.asInstanceOf[Map[FactRef, Answer]])
+  def after[A](ms: Long, a: => A): Map[FactRef,
+    Answer] ! Async = Async.sleep[Async](ms).map(_ => a.asInstanceOf[Map[FactRef, Answer]])
   def stripe(ms: Long) = new Source:
     def ask(refs: List[FactRef]) = after(ms, refs.map(_ -> Answer.Is(Value.D(BigDecimal("100.00")))).toMap)
   def fraud(ms: Long, risk: Int = 10) = new Source:

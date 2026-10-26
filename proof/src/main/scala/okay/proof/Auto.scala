@@ -12,7 +12,8 @@ import okay.scala3.std.*
  * A goal is, in turn: a fact (`assume`); computable (`compute`, exact arithmetic in one step); a conjunction (both
  * proved); a disjunction (a side chosen); a comparison over `Int` or `Dec` that follows linearly from the facts
  * (`Linarith`: `spent(ann) ≤ 300` and `daily(teller) = 1500` give `spent(ann) + 500 ≤ daily(teller)`); a formula with
- * a term of one's own whose value a fact gives (rewritten, then proved); the head of a rule (its variables bound by the head, the rest by facts matching
+ * a term of one's own whose value a fact gives (rewritten,
+   then proved); the head of a rule (its variables bound by the head, the rest by facts matching
  * its body, the body then proved). Nothing here is trusted: a wrong step is refused by the kernel.
  */
 final class Auto(theory: Theory, facts: List[Formula], depth: Int = 32):

@@ -34,7 +34,8 @@ class TypesSuite extends munit.FunSuite:
 
   test("an Int literal where a Dec is wanted; dec(...) of an Int; entities by their names") {
     val c = ok("allow pay when amount <= 500 and amount * 2 <= balance(account) + 1 and caller = boss")
-    val TCond.And(TCond.And(TCond.Compare(_, _, five), _), TCond.Compare(_, _, boss)) = c.rules.head.when.get: @unchecked
+    val TCond.And(TCond.And(TCond.Compare(_, _, five), _), TCond.Compare(_, _,
+      boss)) = c.rules.head.when.get: @unchecked
     assertEquals(five, TExpr.Lit(Value.D(BigDecimal(500))))
     assertEquals(boss, TExpr.Lit(Value.E("User", "boss")))
   }
@@ -72,8 +73,10 @@ class TypesSuite extends munit.FunSuite:
     assertEquals(problems("allow pay when owns(caller)"), List("owns takes 2 arguments, given 1"))
     assertEquals(problems("allow pay when owns(account, caller)"), List("expected User, found Account",
       "expected Account, found User"))
-    assertEquals(problems("allow pay when owns(caller, account) = 1"), List("owns is a relation: a condition, not a value"))
-    assertEquals(problems("allow pay when role(caller)"), List("role is a function fact: compare its value (`role(...) = ...`)"))
+    assertEquals(problems("allow pay when owns(caller, account) = 1"),
+      List("owns is a relation: a condition, not a value"))
+    assertEquals(problems("allow pay when role(caller)"),
+      List("role is a function fact: compare its value (`role(...) = ...`)"))
     assertEquals(problems("allow pay when balance(account) > spent(caller) and owns(caller, account)"), Nil)
     assertEquals(problems("fact boss(user: User): User\nallow pay when role(boss(caller)) = \"x\""),
       List("a fact's argument is a name or a literal, not a fact: boss(caller)"))
@@ -92,7 +95,8 @@ class TypesSuite extends munit.FunSuite:
   test("tests: unknown tools, arguments, facts; missing arguments") {
     def t(s: String) = Types.tests(ok(""), s"tests for p\ntest \"t\"\n  $s").left.toOption.toList.flatten.map(_.message)
     assertEquals(t("given owns(ann, acc1) when ann calls send(amount: 1) expect allow"), List("an unknown tool send"))
-    assertEquals(t("given owns(ann, acc1) when ann calls pay(account: acc1, amount: 1, currency: \"usd\", x: 1) expect allow"),
+    assertEquals(
+      t("given owns(ann, acc1) when ann calls pay(account: acc1, amount: 1, currency: \"usd\", x: 1) expect allow"),
       List("pay has no argument x"))
     assertEquals(t("given owns(ann, acc1) when ann calls pay(account: acc1) expect allow"),
       List("the call's argument amount is missing", "the call's argument currency is missing"))

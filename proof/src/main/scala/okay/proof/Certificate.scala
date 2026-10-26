@@ -28,13 +28,15 @@ object Certificate:
       "theory" -> Json.Str(t.kernel.theory.name),
       "axioms" -> axioms(t.kernel.theory),
       "digest" -> Json.Str(digest(t.kernel.theory)),
-      "hypotheses" -> Json.Arr(t.hyps.toList.sortBy(f => Codec.formula(f).render)(using Logic.byCodePoints).map(Codec.formula)),
+      "hypotheses" ->
+        Json.Arr(t.hyps.toList.sortBy(f => Codec.formula(f).render)(using Logic.byCodePoints).map(Codec.formula)),
       "conclusion" -> Codec.formula(t.concl),
       "steps" -> Json.Arr(steps.toList))).render
 
   /** a theory's axioms as a certificate carries them: `[[name, formula], …]`, by name */
   def axioms(th: Theory): Json =
-    Json.Arr(th.axioms.toList.sortBy(_._1)(using Logic.byCodePoints).map((n, f) => Json.Arr(List(Json.Str(n), Codec.formula(f)))))
+    Json.Arr(th.axioms.toList.sortBy(_._1)(using Logic.byCodePoints).map((n, f) => Json.Arr(List(Json.Str(n),
+      Codec.formula(f)))))
 
   /** a theory's DIGEST: FNV-1a, 64 bits, of its axioms' JSON — what another checker computes alike, so an auditor can
    * pin the theory a certificate is under */
@@ -175,14 +177,16 @@ object Certificate:
           for x <- field("x").flatMap(v); g <- fm("f"); by <- field("by").flatMap(t) yield ExI(x, g, by, a)
         case (Some(Json.Str("ExE")), List(a, b)) => field("y").flatMap(v).map(ExE(a, _, b))
         case (Some(Json.Str("Refl")), Nil) => field("t").flatMap(t).map(Refl(_))
-        case (Some(Json.Str("Subst")), List(a, b)) => for x <- field("x").flatMap(v); g <- fm("f") yield Subst(a, x, g, b)
+        case (Some(Json.Str("Subst")), List(a, b)) => for x <- field("x").flatMap(v); g <- fm("f") yield Subst(a, x,
+          g, b)
         case (Some(Json.Str("Induct")), List(a, b)) =>
           for x <- field("x").flatMap(v); g <- fm("f") yield Induct(x, g, a, b)
         case (Some(Json.Str("Norm")), Nil) => fm("f").map(Norm(_))
         case (Some(Json.Str("LinComb")), ps) if ps.nonEmpty => field("by").flatMap {
             case Json.Arr(cs) if cs.length == ps.length =>
               cs.foldRight[Either[String, List[BigDecimal]]](Right(Nil)) {
-                case (Json.Str(c), acc) => acc.flatMap(l => scala.util.Try(BigDecimal(c, java.math.MathContext.UNLIMITED))
+                case (Json.Str(c), acc) => acc.flatMap(l => scala.util.Try(BigDecimal(c,
+                  java.math.MathContext.UNLIMITED))
                     .toOption.toRight(s"not a coefficient: $c").map(_ :: l))
                 case (_, _) => Left("a coefficient that is not a string")
               }.map(cs => LinComb(ps.zip(cs)))
@@ -229,7 +233,8 @@ object Codec:
 
   def term(j: Json): Either[String, Term] = j match
     case Json.Arr(List(Json.Str("v"), Json.Str(n), s)) => sort(s).map(V(n, _))
-    case Json.Arr(List(Json.Str("i"), Json.Str(v))) => v.toIntOption.map(BigInt(_)).orElse(scala.util.Try(BigInt(v)).toOption)
+    case Json.Arr(List(Json.Str("i"),
+      Json.Str(v))) => v.toIntOption.map(BigInt(_)).orElse(scala.util.Try(BigInt(v)).toOption)
         .map(I(_)).toRight(s"not an integer: $v")
     case Json.Arr(List(Json.Str("d"), Json.Str(v))) => scala.util.Try(BigDecimal(v, java.math.MathContext.UNLIMITED))
         .toOption.map(D(_)).toRight(s"not a decimal: $v")

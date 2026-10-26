@@ -23,7 +23,8 @@ object Call:
     Call(tool, caller, args.map((k, v) => k -> Data.Leaf(v)))
 
   /** what the call says, as facts: each value of a field an equation (`arg:amount(call) = 50`), each optional field
-   * supplied or not (`has:arg:coupon(call)`), each list's count and members (`arg:items(call, #items0)`), each element's
+   * supplied or not (`has:arg:coupon(call)`), each list's count and members (`arg:items(call,
+     #items0)`), each element's
    * fields as facts of the element (`Item.qty(#items0) = 3`) — and each list with all its elements. A field missing or
    * of the wrong kind is reported in `malformed`: such a call is denied */
   final case class Facts(facts: Map[FactRef, Answer], lists: Map[FactRef, List[Value]], malformed: List[String])

@@ -13,18 +13,27 @@ object Printer:
     case Decl.Record(n, fs, _) => s"type $n = { ${params(fs)} }"
     case Decl.Fact(n, ps, result, source, _, fetch) =>
       s"fact $n(${params(ps)})" + result.fold("")(s => s": $s") + (fetch match
-        case Some(f) => s" from mcp ${f.tool}(${f.args.map((k, v) => s"$k: ${expr(v)}").mkString(", ")}) at ${quote(f.at)}"
+        case Some(f) =>
+          val as = f.args.map((k, v) => s"$k: ${expr(v)}").mkString(", ")
+          s" from mcp ${f.tool}($as) at ${quote(f.at)}"
         case None => source.fold("")(s => s" from $s"))
     case Decl.State(n, ps, s, window, init, _) =>
       s"state $n(${params(ps)}): $s" + window.fold("")(w => s" per ${w.word}") + s" = ${expr(init)}"
     case Decl.Call(tool, ps, _) => s"call ${toolName(tool)}(${params(ps)})"
-    case Decl.Rule(verdict, target, when, updates, because, _) =>
+    case Decl.Rule(verdict, target, when, updates, because, _, notifies) =>
       s"${verdict.word} ${targetWord(target)}" +
         when.fold("")(c => s"\n  when ${cond(c)}") +
         (if updates.isEmpty then "" else updates.map(update).mkString("\n  then ", ", ", "")) +
-        because.fold("")(b => s"\n  because ${quote(b)}")
+        because.fold("")(b => s"\n  because ${quote(b)}") +
+        (if notifies.isEmpty then "" else notifies.mkString("\n  notify ", ", ", ""))
+    case Decl.Default(verdict, _) => s"default ${verdict.word}"
+    case Decl.Webhook(n, Hook.Url(u), _) => s"webhook $n = ${quote(u)}"
+    case Decl.Webhook(n, Hook.Env(v), _) => s"webhook $n = env ${quote(v)}"
+    case Decl.Notify(ns, on, target, when, _) =>
+      s"notify ${ns.mkString(", ")} on ${on.words} ${targetWord(target)}" + when.fold("")(c => s"\n  when ${cond(c)}")
     case Decl.Count(target, when, updates, _) =>
-      s"count ${targetWord(target)}" + when.fold("")(c => s"\n  when ${cond(c)}") + updates.map(update).mkString("\n  then ", ", ", "")
+      s"count ${targetWord(target)}" + when.fold("")(c => s"\n  when ${cond(c)}") +
+        updates.map(update).mkString("\n  then ", ", ", "")
     case Decl.Test(n, givens, caller, tool, args, expect, because, _) =>
       s"test ${quote(n)}" + (if givens.isEmpty then "" else s"\n  given ${givens.map(givenText).mkString(", ")}") +
         s"\n  when $caller calls ${toolName(tool)}(" +
@@ -33,7 +42,9 @@ object Printer:
 
   /** a tool's name as written: a text if it is no name (`"list-files"`) */
   def toolName(t: String): String =
-    if t.nonEmpty && (t.head.isLetter || t.head == '_') && t.forall(c => c.isLetterOrDigit || c == '_' || c == '.') then t
+    val plain = t.nonEmpty && (t.head.isLetter || t.head == '_') &&
+      t.forall(c => c.isLetterOrDigit || c == '_' || c == '.')
+    if plain then t
     else quote(t)
 
   private def targetWord(t: Target): String = t match

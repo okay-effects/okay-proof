@@ -33,28 +33,38 @@ object Bench:
     time("a step: compute round(1234.567 · 0.19, 2) = 234.57, exact", 1_000_000)(k.derive(Compute(money)))
     time("a step: ∀ out, the policy's first variable", 1_000_000)(k.derive(AllE(ax, ann)))
     time("a DECISION: transfer allowed, searched on effects, proved", 50_000)(Auto.prove(k, facts, goal))
-    time("a decision refused: no proof, every branch tried", 50_000)(Auto.prove(k, facts, transfer(ann, acc1, "1250.00")))
+    time("a decision refused: no proof, every branch tried", 50_000)(Auto.prove(k, facts, transfer(ann, acc1,
+      "1250.00")))
     val bounded = facts.map {
       case Eq(s, v) if s == spent(ann) => Le(spent(ann), v)
       case f => f
     }
-    time("a DECISION from bounds: spent(ann) ≤ 300, linear arithmetic", 50_000)(Auto.prove(k, bounded, transfer(ann, acc1, "900.00")))
+    time("a DECISION from bounds: spent(ann) ≤ 300, linear arithmetic", 50_000)(Auto.prove(k, bounded, transfer(ann,
+      acc1, "900.00")))
     val (x, y, z, w) = (V("x", Sort.Int), V("y", Sort.Int), V("z", Sort.Int), V("w", Sort.Int))
     val empty = Kernel(Theory.empty)
-    time("Linarith: x ≤ y, y ≤ z, z ≤ w ⊢ x ≤ w (Int)", 100_000)(Linarith.decide(empty, Le(x, w), List(Le(x, y), Le(y, z), Le(z, w))))
-    time("Linarith: 2x = 1 ⊢ false (Int, a cut)", 100_000)(Linarith.decide(empty, Lt(I(1), I(0)), List(Eq(Ap(Fns.mul, List(I(2), x)), I(1)))))
+    time("Linarith: x ≤ y, y ≤ z, z ≤ w ⊢ x ≤ w (Int)", 100_000)(Linarith.decide(empty, Le(x, w), List(Le(x, y), Le(y,
+      z), Le(z, w))))
+    time("Linarith: 2x = 1 ⊢ false (Int, a cut)", 100_000)(Linarith.decide(empty, Lt(I(1), I(0)), List(Eq(Ap(Fns.mul,
+      List(I(2), x)), I(1)))))
     val (a2, b2) = (V("a", Sort.Dec), V("b", Sort.Dec))
     time("Linarith: a = 0.10, b = 0.20 ⊢ a + b = 0.30 (Dec, two refutations)", 100_000)(
-      Linarith.decide(empty, Eq(Ap(Fns.dadd, List(a2, b2)), dec("0.30")), List(Eq(a2, dec("0.10")), Eq(b2, dec("0.20")))))
-    def lin2(a: Int, u: Term, b: Int, v: Term): Term = Ap(Fns.add, List(Ap(Fns.mul, List(I(a), u)), Ap(Fns.mul, List(I(b), v))))
-    val pugh = List(Le(I(27), lin2(11, x, 13, y)), Le(lin2(11, x, 13, y), I(45)), Le(I(-10), lin2(7, x, -9, y)), Le(lin2(7, x, -9, y), I(4)))
-    time("Omega: Pugh's 27 ≤ 11x+13y ≤ 45, −10 ≤ 7x−9y ≤ 4 refuted (~1000 steps)", 2_000)(Linarith.decide(empty, Lt(I(1), I(0)), pugh))
+      Linarith.decide(empty, Eq(Ap(Fns.dadd, List(a2, b2)), dec("0.30")), List(Eq(a2, dec("0.10")), Eq(b2,
+        dec("0.20")))))
+    def lin2(a: Int, u: Term, b: Int, v: Term): Term = Ap(Fns.add, List(Ap(Fns.mul, List(I(a), u)), Ap(Fns.mul,
+      List(I(b), v))))
+    val pugh = List(Le(I(27), lin2(11, x, 13, y)), Le(lin2(11, x, 13, y), I(45)), Le(I(-10), lin2(7, x, -9, y)),
+      Le(lin2(7, x, -9, y), I(4)))
+    time("Omega: Pugh's 27 ≤ 11x+13y ≤ 45, −10 ≤ 7x−9y ≤ 4 refuted (~1000 steps)", 2_000)(Linarith.decide(empty,
+      Lt(I(1), I(0)), pugh))
     time("Omega: 3x + 5y = 1 in the box 0..1 refuted (a fresh σ)", 20_000)(Linarith.decide(empty, Lt(I(1), I(0)),
       List(Eq(lin2(3, x, 5, y), I(1)), Le(I(0), x), Le(x, I(1)), Le(I(0), y), Le(y, I(1)))))
     val (p2, q2) = (V("p", Sort.Dec), V("q", Sort.Dec))
     time("products: 0 ≤ p ≤ 10.00, 0 ≤ q ≤ 5 ⊢ p·q ≤ 50.00", 20_000)(Linarith.decide(empty,
-      Le(Ap(Fns.dmul, List(p2, q2)), dec("50.00")), List(Le(dec("0"), p2), Le(p2, dec("10.00")), Le(dec("0"), q2), Le(q2, dec("5")))))
-    time("Norm: x + y = y + x, one step", 1_000_000)(empty.derive(Norm(Eq(Ap(Fns.add, List(x, y)), Ap(Fns.add, List(y, x))))))
+      Le(Ap(Fns.dmul, List(p2, q2)), dec("50.00")), List(Le(dec("0"), p2), Le(p2, dec("10.00")), Le(dec("0"), q2),
+        Le(q2, dec("5")))))
+    time("Norm: x + y = y + x, one step", 1_000_000)(empty.derive(Norm(Eq(Ap(Fns.add, List(x, y)), Ap(Fns.add, List(y,
+      x))))))
     time("the lemma library: 42 lemmas proved", 200)(Lemmas(Kernel(Theory.empty)).all)
     time("its certificate written (JSON)", 50_000)(Certificate.of(proof))
     time("its certificate checked: parsed, every step derived again", 50_000)(Certificate.check(cert, k))

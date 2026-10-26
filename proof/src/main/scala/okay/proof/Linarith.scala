@@ -177,7 +177,8 @@ object Linarith:
         val gd = JDec(g)
         val i = leaves.length
         leaves += Leaf.Tight(r.prov)
-        Row(Lin(r.form.coeffs.view.mapValues(_.divide(gd)).toMap, r.form.const.divide(gd, 0, java.math.RoundingMode.FLOOR)),
+        Row(Lin(r.form.coeffs.view.mapValues(_.divide(gd)).toMap, r.form.const.divide(gd, 0,
+          java.math.RoundingMode.FLOOR)),
           false, Map(i -> JDec.ONE))
 
   /** the refutation as steps: `False`, from the plan's leaves */

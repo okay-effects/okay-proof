@@ -17,7 +17,8 @@ final class Lemmas(val kernel: Kernel):
   private val kept = mutable.Map.empty[(String, Any), Thm]
 
   private def keep(name: String, key: Any)(proof: => Thm ! Infer): Thm =
-    kept.getOrElseUpdate((name, key), run(Infer.by(kernel)(proof)).fold(e => throw IllegalStateException(s"$name: $e"), identity))
+    kept.getOrElseUpdate((name, key),
+      run(Infer.by(kernel)(proof)).fold(e => throw IllegalStateException(s"$name: $e"), identity))
 
   private def vars(s: Sort, names: String*): List[V] = names.toList.map(V(_, s))
 
@@ -53,7 +54,8 @@ final class Lemmas(val kernel: Kernel):
   // -- ORDER (Int, Dec)
 
   /** `∀x. x ≤ x` */
-  def leRefl(s: Sort): Thm = { num(s); val List(x) = vars(s, "x"): @unchecked; arith("leRefl", s, List(x), Nil, Le(x, x)) }
+  def leRefl(s: Sort): Thm = { num(s); val List(x) = vars(s, "x"): @unchecked; arith("leRefl", s, List(x), Nil, Le(x,
+    x)) }
   /** `∀x y z. x ≤ y ∧ y ≤ z → x ≤ z` */
   def leTrans(s: Sort): Thm =
     num(s); val List(x, y, z) = vars(s, "x", "y", "z"): @unchecked
@@ -67,7 +69,8 @@ final class Lemmas(val kernel: Kernel):
     num(s); val List(x, y, z) = vars(s, "x", "y", "z"): @unchecked
     arith("leLtTrans", s, List(x, y, z), List(Le(x, y), Lt(y, z)), Lt(x, z))
   /** `∀x. ¬(x < x)` */
-  def ltIrrefl(s: Sort): Thm = { num(s); val List(x) = vars(s, "x"): @unchecked; arith("ltIrrefl", s, List(x), Nil, Not(Lt(x, x))) }
+  def ltIrrefl(s: Sort): Thm = { num(s); val List(x) = vars(s, "x"): @unchecked; arith("ltIrrefl", s, List(x), Nil,
+    Not(Lt(x, x))) }
   /** `∀x y. x < y → x ≤ y` */
   def ltToLe(s: Sort): Thm =
     num(s); val List(x, y) = vars(s, "x", "y"): @unchecked
@@ -110,9 +113,11 @@ final class Lemmas(val kernel: Kernel):
     num(s); val List(x, y, z) = vars(s, "x", "y", "z"): @unchecked
     arith("addAssoc", s, List(x, y, z), Nil, Eq(add(s, add(s, x, y), z), add(s, x, add(s, y, z))))
   /** `∀x. x + 0 = x` */
-  def addZero(s: Sort): Thm = { num(s); val List(x) = vars(s, "x"): @unchecked; arith("addZero", s, List(x), Nil, Eq(add(s, x, zero(s)), x)) }
+  def addZero(s: Sort): Thm = { num(s); val List(x) = vars(s, "x"): @unchecked; arith("addZero", s, List(x), Nil,
+    Eq(add(s, x, zero(s)), x)) }
   /** `∀x. x - x = 0` */
-  def subSelf(s: Sort): Thm = { num(s); val List(x) = vars(s, "x"): @unchecked; arith("subSelf", s, List(x), Nil, Eq(sub(s, x, x), zero(s))) }
+  def subSelf(s: Sort): Thm = { num(s); val List(x) = vars(s, "x"): @unchecked; arith("subSelf", s, List(x), Nil,
+    Eq(sub(s, x, x), zero(s))) }
   /** `∀a b c d. a ≤ b ∧ c ≤ d → a + c ≤ b + d` */
   def addLeAdd(s: Sort): Thm =
     num(s); val List(a, b, c, d) = vars(s, "a", "b", "c", "d"): @unchecked

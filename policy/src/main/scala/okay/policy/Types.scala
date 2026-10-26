@@ -85,10 +85,16 @@ final case class TGiven(name: String, args: List[Value], value: Either[Boolean, 
 final case class TTest(name: String, givens: List[TGiven], caller: Value, tool: String, args: Map[String, Data],
                        expect: Verdict, because: Option[String], source: Decl.Test)
 
-/** A POLICY CHECKED: its signatures, and its rules and tests over them — what the evaluator runs */
+/** a notice checked: the webhooks it goes to, on what outcome, of which tools' calls, when */
+final case class TNotice(names: List[String], on: NoticeOn, tools: List[String], when: Option[TCond],
+                         source: Decl.Notify)
+
+/** A POLICY CHECKED: its signatures, and its rules and tests over them — what the evaluator runs; its default verdict
+ * (deny unless said), its webhooks and its notices — the guard's to act on */
 final case class Checked(policy: Policy, types: Set[String], records: Map[String, List[Field]],
                          facts: Map[String, FactSig], states: Map[String, StateSig], calls: Map[String, CallSig],
-                         rules: List[TRule], counts: List[TCount]):
+                         rules: List[TRule], counts: List[TCount], default: Verdict = Verdict.Deny,
+                         webhooks: Map[String, Hook] = Map.empty, notices: List[TNotice] = Nil):
   /** the rules deciding `tool`, in the policy's order */
   lazy val rulesOf: Map[String, List[TRule]] = calls.keys.map(t => t -> rules.filter(_.tools.contains(t))).toMap
   /** the counts of `tool`'s calls */
@@ -193,7 +199,22 @@ object Types:
       val sigs = Sigs(facts, states, calls, records)
       val rules = p.rules.zipWithIndex.flatMap((r, i) => rule(r, i, sigs))
       val counts = p.counts.flatMap(count(_, sigs))
-      if problems.isEmpty then Right(Checked(p, types, records, facts, states, calls, rules, counts))
+      p.defaults.drop(1).foreach(d => problem(d.pos, "a second default: a policy has one"))
+      duplicates(p.webhooks.map(w => (w.name, w.pos)), "webhook")
+      val hooks = p.webhooks.map(w => w.name -> w.at).toMap
+      def declared(names: List[String], pos: Pos): Unit =
+        names.filterNot(hooks.contains).foreach(n => problem(pos, s"an unknown webhook $n: declare it with `webhook`"))
+      p.rules.foreach(r => declared(r.notifies, r.pos))
+      val notices = p.notices.flatMap { n =>
+        declared(n.names, n.pos)
+        scopeOf(n.target, n.pos, sigs).flatMap { scope =>
+          val when = n.when.flatMap(cond(_, scope)).map(nnf)
+          Option.when(n.when.isEmpty || when.isDefined)(TNotice(n.names, n.on, scope.tools, when, n))
+        }
+      }
+      val default = p.defaults.headOption.fold(Verdict.Deny)(_.verdict)
+      if problems.isEmpty then
+        Right(Checked(p, types, records, facts, states, calls, rules, counts, default, hooks, notices))
       else Left(problems.toList.sortBy(q => (q.pos.line, q.pos.col)))
 
     def tests(c: Checked, f: TestFile): Either[List[Problem], List[TTest]] =
@@ -205,7 +226,8 @@ object Types:
 
     private def duplicates(names: List[(String, Pos)], what: String): Unit =
       names.groupBy(_._1).foreach((n, all) =>
-        if all.size > 1 then all.sortBy((_, p) => (p.line, p.col)).tail.foreach((_, p) => problem(p, s"a $what $n again")))
+        if all.size > 1 then all.sortBy((_, p) => (p.line, p.col)).tail.foreach((_, p) => problem(p,
+          s"a $what $n again")))
 
     private final case class Sigs(facts: Map[String, FactSig], states: Map[String, StateSig],
                                   calls: Map[String, CallSig], records: Map[String, List[Field]])
@@ -233,7 +255,8 @@ object Types:
           if ts.isEmpty then problem(pos, s"no tool of the server $s is declared")
           ts
         case Target.Any => sigs.calls.keys.toList.sorted
-      val common = tools.map(t => sigs.calls.get(t).fold(Map.empty[String, Field])(_.params.map(f => f.name -> f).toMap))
+      val common = tools.map(t => sigs.calls.get(t).fold(Map.empty[String,
+        Field])(_.params.map(f => f.name -> f).toMap))
       val args = common.headOption.fold(Map.empty[String, Field])(first =>
         first.filter((n, f) => common.forall(_.get(n).exists(_.sort == f.sort))))
       Option.when(tools.nonEmpty && tools.forall(sigs.calls.contains))(
@@ -335,7 +358,8 @@ object Types:
 
     private def args(name: String, as: List[Expr], sorts: List[Sort], pos: Pos, scope: Scope): Option[List[TExpr]] =
       if as.length != sorts.length then
-        problem(pos, s"$name takes ${sorts.length} argument${if sorts.length == 1 then "" else "s"}, given ${as.length}")
+        problem(pos,
+          s"$name takes ${sorts.length} argument${if sorts.length == 1 then "" else "s"}, given ${as.length}")
         None
       else
         val checked = as.zip(sorts).map { (a, s) =>
@@ -370,7 +394,8 @@ object Types:
           case Named.Lst(l) => Some(TExpr.Fact(l.name + "#count", List(l.base), Sort.Int))
           case _ => problem(pos, s"count of a list only: $n"); None
         }
-      case _: (Expr.ListLit | Expr.RecLit) => problem(e.pos, "a list or a record is written only in a test's call"); None
+      case _: (Expr.ListLit | Expr.RecLit) => problem(e.pos,
+        "a list or a record is written only in a test's call"); None
       case Expr.Apply("dec", List(a), _) if !scope.sigs.facts.contains("dec") =>
         expr(a, scope, Some(Sort.Int)).flatMap { x =>
           if x.sort == Sort.Int then Some(TExpr.ToDec(x))
@@ -541,7 +566,8 @@ object Types:
         case (Expr.Var("false", _), Sort.Bool) => Some(Data.Bit(false))
         case (_, Sort.Bool) => problem(e.pos, s"expected true or false, found ${Printer.expr(e)}"); None
         case _ => constant(e, s).map(Data.Leaf(_))
-      def fields(supplied: List[(String, Expr, Pos)], of: List[Field], what: String, pos: Pos): Option[Map[String, Data]] =
+      def fields(supplied: List[(String, Expr, Pos)], of: List[Field], what: String, pos: Pos): Option[Map[String,
+        Data]] =
         supplied.filterNot(g => of.exists(_.name == g._1)).foreach(g => problem(g._3, s"$what ${g._1}"))
         val written = supplied.map(g => g._1 -> g._2).toMap
         val out = of.map { f =>
@@ -553,6 +579,7 @@ object Types:
         }
         Option.when(out.forall(_._2.isDefined))(out.flatMap((n, d) => d.get.map(n -> _)).toMap)
       val args = call.toList.flatMap(c =>
-        fields(t.args.map(a => (a.name, a.value, a.pos)), c.params, s"${t.tool} has no argument", t.pos).toList.flatMap(_.toList)).toMap
+        fields(t.args.map(a => (a.name, a.value, a.pos)), c.params, s"${t.tool} has no argument",
+          t.pos).toList.flatMap(_.toList)).toMap
       if !types(Types.callerType) then problem(t.pos, s"a test's caller is a ${Types.callerType}: declare the type")
       Option.when(call.isDefined)(TTest(t.name, givens, callerValue, t.tool, args, t.expect, t.because, t))

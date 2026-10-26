@@ -6,7 +6,8 @@ import java.math.{BigDecimal as JDec, BigInteger}
  * POLYNOMIAL FORMS — part of the trusted base, with the rules that use them (`Norm`, `LinComb`, `Tighten`,
  * `MulNonneg`, `Square`): a term of sort `Int` or `Dec` read as `Σ cᵢ·mᵢ + c`, each `mᵢ` a MONOMIAL — a product of
  * ATOMS, the terms that are not ring structure (variables, functions of one's own, `div`, `round` of a non-constant …),
- * kept as one canonical term (the atoms in the order of their keys, `Term.key`, multiplied left to right). Only identities true of every
+ * kept as one canonical term (the atoms in the order of their keys, `Term.key`,
+   multiplied left to right). Only identities true of every
  * commutative ring — so of the integers and the rationals — are used: `+`, `-`, `neg`, `*` distributed, a closed
  * computable term its value. An atom's arguments of sort `Int` or `Dec` are put in canonical form first, so `f(1 + x)`
  * and `f(x + 1)` are one atom — sound, a function giving equal values for equal arguments. To linear arithmetic a

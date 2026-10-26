@@ -28,7 +28,8 @@ class LemmasSuite extends munit.FunSuite:
   }
 
   test("a lemma used: instantiated, then applied") {
-    val inst = k.derive(AllE(k.derive(AllE(k.derive(AllE(lemmas.leTrans(Sort.Int), I(1))).toOption.get, I(2))).toOption.get, I(3))).toOption.get
+    val inst = k.derive(AllE(k.derive(AllE(k.derive(AllE(lemmas.leTrans(Sort.Int), I(1))).toOption.get,
+      I(2))).toOption.get, I(3))).toOption.get
     val premise = k.derive(Compute(And(Le(I(1), I(2)), Le(I(2), I(3))))).toOption.get
     assertEquals(k.derive(ImpE(inst, premise)).map(_.concl), Right(Le(I(1), I(3))))
   }

@@ -56,7 +56,8 @@ class DecideSuite extends munit.FunSuite:
       Answer.Holds(false)))
     assertEquals(denied.verdict, Verdict.Deny)
     assertEquals(denied.theorem, None)
-    assert(denied.reasons.exists(_.contains("currency (\"gbp\") in [\"usd\", \"eur\"] is false")), denied.reasons.toString)
+    assert(denied.reasons.exists(_.contains("currency (\"gbp\") in [\"usd\", \"eur\"] is false")),
+      denied.reasons.toString)
     val huge = decide(pay("6000.00"))
     assertEquals(huge.verdict, Verdict.Deny)
     assert(huge.reasons.exists(_.contains("amount (6000.00) <= 5000.00 is false")), huge.reasons.toString)
@@ -104,8 +105,10 @@ class DecideSuite extends munit.FunSuite:
       |call op(n: Int)
       |allow op when not (banned(caller) or level(caller) < 3) and not (n > 10)
       |""".stripMargin).fold(ps => fail(ps.mkString), identity)
-    val facts = Map(FactRef("banned", List(ann)) -> Answer.Holds(false), FactRef("level", List(ann)) -> Answer.Is(Value.I(5)))
-    val d = run(States.Memory(p.checked).handler(Facts.known(facts)(Decide[Row](p, Call.flat("op", ann, Map("n" -> Value.I(4)))))))
+    val facts = Map(FactRef("banned", List(ann)) -> Answer.Holds(false), FactRef("level",
+      List(ann)) -> Answer.Is(Value.I(5)))
+    val d = run(States.Memory(p.checked).handler(Facts.known(facts)(Decide[Row](p, Call.flat("op", ann,
+      Map("n" -> Value.I(4)))))))
     assertEquals(d.verdict, Verdict.Allow)
     assert(d.facts.map(_.toString).exists(_.startsWith("¬banned(ann)")), d.facts.toString)
     val low = facts.updated(FactRef("level", List(ann)), Answer.Is(Value.I(2)))
@@ -118,7 +121,8 @@ class DecideSuite extends munit.FunSuite:
     def k(c: Call) = Known(known ++ Call.facts(policy.checked, c).facts,
       Map(FactRef("spent", List(ann)) -> Value.D(BigDecimal("0.00"))))
     val tooMuch = pay("600.00") // over the limit of one: the allow rule does not hold
-    val got = run(okay.proof.Infer.by(policy.kernel)(policy.prove.decision[okay.proof.Infer](allow, tooMuch, k(tooMuch))))
+    val got = run(okay.proof.Infer.by(policy.kernel)(policy.prove.decision[okay.proof.Infer](allow, tooMuch,
+      k(tooMuch))))
     assert(got.left.exists(_.contains("600 ≤ 500")), got.toString)
     val fine = pay("60.00")
     val ok = run(okay.proof.Infer.by(policy.kernel)(policy.prove.decision[okay.proof.Infer](allow, fine, k(fine))))

@@ -13,7 +13,8 @@ class SyntaxSuite extends munit.FunSuite:
     assertEquals(p.types.map(_.name), List("User", "Account"))
     assertEquals(p.facts.map(_.name), List("owns", "role", "balance"))
     assertEquals(p.facts.map(_.source), List(None, None, Some("stripe")))
-    assertEquals(p.states.map(s => (s.name, s.window)), List(("spent", Some(Window.Day)), ("calls", Some(Window.Minute))))
+    assertEquals(p.states.map(s => (s.name, s.window)), List(("spent", Some(Window.Day)), ("calls",
+      Some(Window.Minute))))
     assertEquals(p.calls.map(_.tool), List("stripe.create_payment", "stripe.refund"))
     assertEquals(p.rules.map(r => (r.verdict, r.target)), List(
       (Verdict.Allow, Target.Tool("stripe.create_payment")), (Verdict.Ask, Target.Tool("stripe.create_payment")),
@@ -56,7 +57,8 @@ class SyntaxSuite extends munit.FunSuite:
   test("problems, with their places") {
     def problem(text: String) = Parser.parse(text).left.toOption.getOrElse(fail(s"parsed: $text"))
     assertEquals(problem("policy p\ntype user").toString, "2:6: a type's name starts with a capital: user")
-    assertEquals(problem("policy p\nallow * when amount <").message, "expected a value: a number, a text, a name, a fact, found the end")
+    assertEquals(problem("policy p\nallow * when amount <").message,
+      "expected a value: a number, a text, a name, a fact, found the end")
     assertEquals(problem("policy p\nallow * when x + 1").message,
       "expected a comparison (=, !=, <, <=, >, >=), 'in', or a text test (starts, ends, contains), found the end")
     assertEquals(problem("policy p\nfact f(x User)").pos, Pos(2, 10))
@@ -64,7 +66,8 @@ class SyntaxSuite extends munit.FunSuite:
     assertEquals(problem("policy p\nallow * because \"no end").message, "a text not closed")
     assertEquals(problem("policy p\nallow * when x # 1").message, "an unexpected character '#'")
     assertEquals(problem("policy p\nwhen").message,
-      "expected a declaration: type, fact, state, call, allow, ask, deny or count, found 'when'")
+      "expected a declaration: type, fact, state, call, allow, ask, deny, count, default, webhook or notify, " +
+        "found 'when'")
   }
 
   test("a tool no name can be, in quotes: written and read again") {
@@ -74,7 +77,8 @@ class SyntaxSuite extends munit.FunSuite:
     assertEquals(p.rules.head.target, Target.Tool("list-files"))
     assertEquals(Printer(parsed(Printer(p))), Printer(p))
     assert(Printer(p).contains("allow \"list-files\""))
-    val tests = "tests for p\ntest \"t\"\n  given x(a)\n  when ann calls \"list-files\"(path: \"/ws/a\")\n  expect allow\n"
+    val tests = "tests for p\ntest \"t\"\n  given x(a)\n" +
+      "  when ann calls \"list-files\"(path: \"/ws/a\")\n  expect allow\n"
     assertEquals(Parser.parseTests(tests).map(_.tests.head.tool), Right("list-files"))
   }
 

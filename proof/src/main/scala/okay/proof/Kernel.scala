@@ -194,7 +194,8 @@ final class Kernel(val theory: Theory):
         case Some(_) => Left(s"the sides differ by more than a constant: $f")
         case None => Left(s"not a comparison over Int or Dec: $f"))
     case LinComb(ps) => linComb(r, ps)
-    case MulNonneg(a, b) => need(ours(a, b), Kernel.foreign)((Linear.comparison(a.concl), Linear.comparison(b.concl)) match
+    case MulNonneg(a, b) => need(ours(a, b), Kernel.foreign)((Linear.comparison(a.concl),
+      Linear.comparison(b.concl)) match
       case (Some((f, k1, s1)), Some((g, k2, s2))) if s1 == s2 =>
         import Linear.Kind
         val p = Linear.term(Linear.times(f, g, s1), s1)

@@ -91,7 +91,8 @@ private object Lexer:
 /** THE PARSER: the text to a `Policy`, or the first problem, with its place. Recursive descent; newlines mean nothing
  * — a declaration begins with its keyword */
 object Parser:
-  private val declWords = Set("type", "fact", "state", "call", "allow", "ask", "deny", "count", "test")
+  private val declWords = Set("type", "fact", "state", "call", "allow", "ask", "deny", "count", "test", "default",
+    "webhook", "notify")
   /** the words no name may be; the others (`from`, `per`, `given`, `calls`, `expect`) are keywords only where they
    * stand, so a state may be called `calls` */
   private val keywords = declWords ++ Set("policy", "when", "then", "because", "and", "or", "not", "in")
@@ -226,7 +227,33 @@ object Parser:
         while acceptSym(",") do updates += update()
         Decl.Count(target, when, updates.toList, p)
       case Tok.Name("test", p) => fail(p, "a test goes in the policy's file of tests (`tests for <policy>`), not in it")
-      case _ => expected("a declaration: type, fact, state, call, allow, ask, deny or count")
+      case Tok.Name("default", p) =>
+        next()
+        Decl.Default(verdictWord(), p)
+      case Tok.Name("webhook", p) =>
+        next()
+        val (n, _) = name("a webhook's name")
+        sym("=")
+        val hook =
+          if acceptWord("env") then Hook.Env(text("an environment variable's name, in quotes"))
+          else Hook.Url(text("an address, in quotes, or env \"VARIABLE\""))
+        Decl.Webhook(n, hook, p)
+      case Tok.Name("notify", p) =>
+        next()
+        val ns = names("a webhook's name")
+        word("on")
+        val on = peek match
+          case Tok.Name("allow", _) => next(); NoticeOn.Allow
+          case Tok.Name("ask", _) => next(); NoticeOn.Ask
+          case Tok.Name("deny", _) => next(); NoticeOn.Deny
+          case Tok.Name("approved", _) => next(); NoticeOn.Approved
+          case Tok.Name("refused", _) => next(); NoticeOn.Refused
+          case Tok.Name("timed", _) => next(); word("out"); NoticeOn.TimedOut
+          case _ => expected("allow, ask, deny, approved, refused or timed out")
+        val target = this.target()
+        val when = if acceptWord("when") then Some(cond()) else None
+        Decl.Notify(ns, on, target, when, p)
+      case _ => expected("a declaration: type, fact, state, call, allow, ask, deny, count, default, webhook or notify")
 
     private def window(): Window = peek match
       case Tok.Name("minute", _) => next(); Window.Minute
@@ -275,7 +302,19 @@ object Parser:
         updates += update()
         while acceptSym(",") do updates += update()
       val because = if acceptWord("because") then Some(text("a reason, in quotes")) else None
-      Decl.Rule(verdict, target, when, updates.toList, because, p)
+      val notifies = if acceptWord("notify") then names("a webhook's name") else Nil
+      Decl.Rule(verdict, target, when, updates.toList, because, p, notifies)
+
+    private def names(what: String): List[String] =
+      val out = ArrayBuffer(name(what)._1)
+      while acceptSym(",") do out += name(what)._1
+      out.toList
+
+    private def verdictWord(): Verdict = peek match
+      case Tok.Name("allow", _) => next(); Verdict.Allow
+      case Tok.Name("ask", _) => next(); Verdict.Ask
+      case Tok.Name("deny", _) => next(); Verdict.Deny
+      case _ => expected("allow, ask or deny")
 
     private def target(): Target =
       if acceptSym("*") then Target.Any

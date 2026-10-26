@@ -14,7 +14,8 @@ object Corpus:
     import Bank.*
     val policyK = Kernel(policy)
     val bounded = facts.map { case Eq(s, v) if s == spent(ann) => Le(spent(ann), v); case f => f }
-    val policies = List("500.00", "1000.00", "999.99").flatMap(a => get(Auto.prove(policyK, facts, transfer(ann, acc1, a))).map(s"policy $a" -> _)) ++
+    val policies = List("500.00", "1000.00", "999.99").flatMap(a => get(Auto.prove(policyK, facts, transfer(ann, acc1,
+      a))).map(s"policy $a" -> _)) ++
       get(Auto.prove(policyK, bounded, transfer(ann, acc1, "900.00"))).map("policy from bounds" -> _)
     val k = Kernel(Theory.empty)
     val (x, y, z, w) = (V("x", Sort.Int), V("y", Sort.Int), V("z", Sort.Int), V("w", Sort.Int))
@@ -37,7 +38,8 @@ object Corpus:
       arith("mod-hat", falsum, Eq(lin2(3, x, 5, y), I(1)), Le(I(0), x), Le(x, I(1)), Le(I(0), y), Le(y, I(1))),
       arith("gcd", falsum, Eq(lin2(6, x, 9, y), I(4))),
       arith("x·y", Le(I(0), Ap(Fns.mul, List(x, y))), Le(I(0), x), Le(I(0), y)),
-      arith("p·q", Le(Ap(Fns.dmul, List(p, q)), d("50.00")), Le(d("0"), p), Le(p, d("10.00")), Le(d("0"), q), Le(q, d("5"))),
+      arith("p·q", Le(Ap(Fns.dmul, List(p, q)), d("50.00")), Le(d("0"), p), Le(p, d("10.00")), Le(d("0"), q), Le(q,
+        d("5"))),
       arith("4 ≤ x·x", Le(I(4), Ap(Fns.mul, List(x, x))), Le(I(2), x)),
       arith("0 ≤ p²", Le(d("0"), Ap(Fns.dmul, List(p, p))))).flatten
     val rnd = scala.util.Random(11)
@@ -70,7 +72,8 @@ object Corpus:
     val hyp = And(Le(I(0), x), f)
     val h = ok(ks, Assume(hyp))
     val unfold = ok(ks, ImpE(ok(ks, AllE(ok(ks, Axiom("sumS")), x)), ok(ks, AndE1(h))))
-    val next = get(Linarith.decide(ks, Le(I(0), sum(add(x, I(1)))), Nil, List(ok(ks, AndE1(h)), ok(ks, AndE2(h)), unfold))).get
+    val next = get(Linarith.decide(ks, Le(I(0), sum(add(x, I(1)))), Nil, List(ok(ks, AndE1(h)), ok(ks, AndE2(h)),
+      unfold))).get
     val induction = ok(ks, Induct(x, f, base, ok(ks, AllI(x, ok(ks, ImpI(hyp, next))))))
     // texts by characters: an emoji is one, as Lean counts; take and takeRight past either end; indexOf
     val path = S("/ws/a\uD83D\uDE00b.txt")
@@ -124,14 +127,17 @@ class DifferentialSuite extends munit.FunSuite:
       case _ => false
     }
     def bump(x: Json): Json = x match
-      case Json.Arr(List(Json.Str("i"), Json.Str(v))) => Json.Arr(List(Json.Str("i"), Json.Str((BigInt(v) + 1).toString)))
-      case Json.Arr(List(Json.Str("d"), Json.Str(v))) => Json.Arr(List(Json.Str("d"), Json.Str(Logic.plain((BigDecimal(v) + 1).bigDecimal))))
+      case Json.Arr(List(Json.Str("i"), Json.Str(v))) => Json.Arr(List(Json.Str("i"),
+        Json.Str((BigInt(v) + 1).toString)))
+      case Json.Arr(List(Json.Str("d"), Json.Str(v))) => Json.Arr(List(Json.Str("d"),
+        Json.Str(Logic.plain((BigDecimal(v) + 1).bigDecimal))))
       case other => other
     val out = List.newBuilder[(String, String)]
     val lits = nodes(Json.Arr(steps), literal)
     if lits > 0 then
       out += "a literal" -> set(j, "steps", replace(Json.Arr(steps), literal, rnd.nextInt(lits), bump)).render
-    val withPremise = steps.zipWithIndex.filter((s, i) => i > 1 && s.get("of").exists { case Json.Arr(xs) => xs.nonEmpty; case _ => false })
+    val withPremise = steps.zipWithIndex.filter((s,
+      i) => i > 1 && s.get("of").exists { case Json.Arr(xs) => xs.nonEmpty; case _ => false })
     if withPremise.nonEmpty then
       val (s, i) = withPremise(rnd.nextInt(withPremise.length))
       val Json.Arr(of) = s.get("of").get: @unchecked
@@ -145,7 +151,8 @@ class DifferentialSuite extends munit.FunSuite:
       val Json.Str(c) = cs(at): @unchecked
       out += "a coefficient" -> set(j, "steps", Json.Arr(steps.updated(i,
         set(s, "by", Json.Arr(cs.updated(at, Json.Str((BigDecimal(c) + 1).bigDecimal.toPlainString))))))).render
-    val swaps = steps.zipWithIndex.filter((s, _) => s.get("rule").exists(r => r == Json.Str("AndE1") || r == Json.Str("AndE2")))
+    val swaps = steps.zipWithIndex.filter((s,
+      _) => s.get("rule").exists(r => r == Json.Str("AndE1") || r == Json.Str("AndE2")))
     if swaps.nonEmpty then
       val (s, i) = swaps(rnd.nextInt(swaps.length))
       val other = if s.get("rule").contains(Json.Str("AndE1")) then "AndE2" else "AndE1"
@@ -156,7 +163,8 @@ class DifferentialSuite extends munit.FunSuite:
     out += "the conclusion" -> set(j, "conclusion", Json.Arr(List(Json.Str("not"), j.get("conclusion").get))).render
     j.get("hypotheses") match
       case Some(Json.Arr(h :: rest)) => out += "a hypothesis dropped" -> set(j, "hypotheses", Json.Arr(rest)).render
-      case _ => out += "a hypothesis added" -> set(j, "hypotheses", Json.Arr(List(Json.Arr(List(Json.Str("true")))))).render
+      case _ => out += "a hypothesis added" -> set(j, "hypotheses",
+        Json.Arr(List(Json.Arr(List(Json.Str("true")))))).render
     val Json.Str(dg) = j.get("digest").get: @unchecked
     out += "the digest" -> set(j, "digest", Json.Str(dg.init + (if dg.last == '0' then "1" else "0"))).render
     j.get("axioms") match
@@ -176,8 +184,10 @@ class DifferentialSuite extends munit.FunSuite:
   test("okay-lean's checker and this kernel agree: every certificate accepted alike, every mutant judged alike") {
     val corpus = Corpus.all
     // every rule of the kernel in some certificate
-    val rules = corpus.flatMap((_, t) => "\"rule\":\"(\\w+)\"".r.findAllMatchIn(Certificate.of(t)).map(_.group(1))).toSet
-    assertEquals(rules, Set("Assume", "Axiom", "Compute", "AndI", "AndE1", "AndE2", "OrI1", "OrI2", "OrE", "ImpI", "ImpE",
+    val rules = corpus.flatMap((_,
+      t) => "\"rule\":\"(\\w+)\"".r.findAllMatchIn(Certificate.of(t)).map(_.group(1))).toSet
+    assertEquals(rules, Set("Assume", "Axiom", "Compute", "AndI", "AndE1", "AndE2", "OrI1", "OrI2", "OrE", "ImpI",
+      "ImpE",
       "NotI", "NotE", "Classic", "FalseE", "AllI", "AllE", "ExI", "ExE", "Refl", "Subst", "Induct", "Norm", "LinComb",
       "Antisym", "Tighten", "MulNonneg", "Square"))
     val dir = Files.createTempDirectory("okay-proof-certs")
@@ -202,7 +212,8 @@ class DifferentialSuite extends munit.FunSuite:
       val scala = Certificate.checkAlone(text)
       val l = lean(file)
       val leanOk = l.get("ok").contains(Json.Bool(true))
-      assertEquals(leanOk, scala.isRight, s"$label: this kernel says ${scala.left.toOption.getOrElse("yes")}, okay-lean says ${l.render}")
+      assertEquals(leanOk, scala.isRight,
+        s"$label: this kernel says ${scala.left.toOption.getOrElse("yes")}, okay-lean says ${l.render}")
       scala match
         case Right(t) =>
           accepted += 1

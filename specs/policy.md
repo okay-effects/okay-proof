@@ -90,7 +90,11 @@ test "a payment over the limit of one is asked"
 
 ```text
 policy    ::= "policy" name decl*
-decl      ::= type | fact | state | call | rule | count
+decl      ::= type | fact | state | call | rule | count | default | webhook | notice
+default   ::= "default" verdict                                 -- at most one; none: deny
+webhook   ::= "webhook" name "=" (text | "env" text)              -- an address, or an environment variable's
+notice    ::= "notify" name ("," name)* "on" outcome target ("when" cond)?
+outcome   ::= "allow" | "ask" | "deny" | "approved" | "refused" | "timed" "out"
 tests     ::= "tests" "for" name test*                        -- a file of its own, beside the policy
 type      ::= "type" Name                                   -- an entity sort: values are names (ann, acc1)
 fact      ::= "fact" name "(" params ")" (":" sort)? ("from" name)?
@@ -98,7 +102,7 @@ state     ::= "state" name "(" params ")" ":" sort ("per" window)? "=" literal
 call      ::= "call" tool "(" params ")" | "import" "tools" "from" text   -- a server's JSON schema
 record    ::= "type" Name "=" "{" field ("," field)* "}"
 param     ::= name "?"? ":" sort                                    -- `?`: optional
-rule      ::= verdict target ("when" cond)? ("then" update ("," update)*)? ("because" text)?
+rule      ::= verdict target ("when" cond)? ("then" update ("," update)*)? ("because" text)? ("notify" name ("," name)*)?
 count     ::= "count" target ("when" cond)? "then" update ("," update)*
 verdict   ::= "allow" | "ask" | "deny"
 target    ::= tool | server ".*" | "*"
@@ -181,7 +185,12 @@ if its condition holds under the facts. Then:
 1. if a `deny` applies, the call is denied;
 2. otherwise, if an `allow` applies, it is allowed — an `allow` with no condition always applies;
 3. otherwise, if an `ask` applies, a human is asked;
-4. otherwise it is denied: nothing is allowed without a rule that proves it (fail closed).
+4. otherwise the policy's DEFAULT: `default allow | ask | deny`, deny if none is written (fail closed).
+
+A rule's verdict is a theorem. The default's is not: that no rule applied cannot in general be proved (an unknown fact
+is not a false one), so a default is REPORTED — `Decision.byDefault`, its verdict, and why each rule did not apply —
+and a policy with `default allow` allows, unproved, what no rule speaks of. Write `default allow` knowingly; with it, an
+`ask` still asks (the default applies only when no rule does), where an `allow *` would have won over it.
 
 Among several applying rules of one verdict, all their updates are made; the `because` texts are all reported. A
 `count` decides nothing: its updates are made for every call of its target that goes ahead — allowed, or asked and
@@ -190,6 +199,24 @@ approved — and its condition holds; never for a denied one.
 Every verdict but the last is a THEOREM: `deny(call)`, `allow(call)`, `ask(call)` proved in the kernel of the policy's
 theory from the call's facts. The last one, the default deny, is reported with the rules that were tried and why each
 did not apply (the facts it lacked, the comparison that failed) — a refusal needs no proof, an allowance always does.
+
+## Webhooks: notices, the guard's to send
+
+The language sends nothing; it says where notices go and when, and the guard sends them:
+
+```text
+webhook security = env "SECURITY_WEBHOOK"
+webhook ops = "https://ops.example/hook"
+
+deny delete_* because "nothing is deleted" notify security     -- the deciding rule's
+notify ops on ask create_refund when amount > 50000             -- on a verdict, over the call's facts
+notify security on refused *                                    -- on what a person made of an ask
+notify ops on timed out *
+```
+
+`Decision.webhooks`: the deciding rules' and the notices on its verdict whose condition holds. A later outcome of an
+ask — approved, refused, timed out — the language never sees; the guard asks `Decide.notices(policy, call, decision,
+outcome)`, matched over what the decision read. The checker refuses a webhook not declared, and a second default.
 
 ## The logic underneath
 

@@ -13,19 +13,22 @@ class McpFactsSuite extends munit.FunSuite:
   val text = """policy refunds
     |type User
     |type Account
-    |fact balance(account: Account): Dec from mcp stripe.retrieve_balance(customer: account, currency: "eur") at "available.0.amount"
+    |fact balance(account: Account): Dec from mcp stripe.retrieve_balance(customer: account,
+      currency: "eur") at "available.0.amount"
     |fact vip(user: User) from mcp crm.get_customer(id: user) at "flags.vip"
     |call stripe.refund(account: Account, amount: Dec)
     |allow stripe.refund when amount <= balance(account) and vip(caller)
     |""".stripMargin
   val policy = Compiled(text).fold(ps => fail(ps.mkString("\n")), identity)
   val ann = Value.E("User", "ann")
-  val call = Call.flat("stripe.refund", ann, Map("account" -> Value.E("Account", "cus_1"), "amount" -> Value.D(BigDecimal(40))))
+  val call = Call.flat("stripe.refund", ann, Map("account" -> Value.E("Account", "cus_1"),
+    "amount" -> Value.D(BigDecimal(40))))
 
   type Row[X] = (Async + States + Facts)[X]
   def decide(invoke: (String, Json) => Future[Json]) =
     val sources = Source.mcp(policy.checked, invoke)
-    Async.toFuture(States.Memory(policy.checked).handler(Facts.from(policy.checked, sources)(Decide[Row](policy, call))))
+    Async.toFuture(States.Memory(policy.checked).handler(Facts.from(policy.checked, sources)(Decide[Row](policy,
+      call))))
 
   def structured(j: String) = Json.parse(s"""{"structuredContent": $j}""").toOption.get
   def texted(j: String) = Json.Obj(List("content" -> Json.Arr(List(Json.Obj(List("type" -> Json.Str("text"),
@@ -33,7 +36,8 @@ class McpFactsSuite extends munit.FunSuite:
 
   test("written and read again; a fetch's arguments are the fact's parameters or literals") {
     val printed = Printer(Parser.parse(text).toOption.get)
-    assert(printed.contains("""from mcp stripe.retrieve_balance(customer: account, currency: "eur") at "available.0.amount""""), printed)
+    val fetch = """from mcp stripe.retrieve_balance(customer: account, currency: "eur") at "available.0.amount""""
+    assert(printed.contains(fetch), printed)
     assertEquals(Printer(Parser.parse(printed).toOption.get), printed)
     assertEquals(Facts.missing(policy.checked, Source.mcp(policy.checked, (_, _) => Future.never).keySet), Set.empty)
     assertEquals(Types(text.replace("customer: account", "customer: acct")).left.map(_.map(_.message)),
@@ -59,6 +63,7 @@ class McpFactsSuite extends munit.FunSuite:
     for
       failing <- decide((_, _) => Future.failed(IllegalStateException("down")))
       nowhere <- decide((t, _) => Future.successful(structured("""{"available": []}""")))
-      wrong <- decide((t, _) => Future.successful(structured("""{"available": [{"amount": "lots"}], "flags": {"vip": "yes"}}""")))
+      wrong <- decide((t,
+        _) => Future.successful(structured("""{"available": [{"amount": "lots"}], "flags": {"vip": "yes"}}""")))
     yield for d <- List(failing, nowhere, wrong) do assertEquals(d.verdict, Verdict.Deny, d.reasons.toString)
   }

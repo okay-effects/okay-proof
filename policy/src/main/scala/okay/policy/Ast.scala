@@ -82,6 +82,19 @@ enum Verdict:
 
   def word: String = productPrefix.toLowerCase
 
+/** a webhook's address: written, or read from the environment where the guard runs */
+enum Hook:
+  case Url(url: String)
+  case Env(variable: String)
+
+/** what a notice is on: a verdict of the policy, or what a person or the time made of an ask */
+enum NoticeOn:
+  case Allow, Ask, Deny, Approved, Refused, TimedOut
+
+  def words: String = this match
+    case TimedOut => "timed out"
+    case other => other.productPrefix.toLowerCase
+
 /** what a rule decides: one tool, every tool of a server, or every call */
 enum Target:
   case Tool(name: String)
@@ -135,7 +148,13 @@ enum Decl:
   case State(name: String, params: List[Param], sort: Sort, window: Option[Window], init: Expr, pos: Pos)
   case Call(tool: String, params: List[Param], pos: Pos)
   case Rule(verdict: Verdict, target: Target, when: Option[Cond], updates: List[Update], because: Option[String],
-            pos: Pos)
+            pos: Pos, notifies: List[String] = Nil)
+  /** the verdict when no rule applies: deny unless said */
+  case Default(verdict: Verdict, pos: Pos)
+  /** where a notice goes — the guard sends it, the language never does: an address, or an environment variable's */
+  case Webhook(name: String, at: Hook, pos: Pos)
+  /** a notice on a kind of outcome of a target's calls: `notify security on deny payments.* when amount > 100` */
+  case Notify(names: List[String], on: NoticeOn, target: Target, when: Option[Cond], pos: Pos)
   /** what is counted when a call goes ahead (allowed, or asked and approved): it decides nothing */
   case Count(target: Target, when: Option[Cond], updates: List[Update], pos: Pos)
   case Test(name: String, givens: List[Given], caller: String, tool: String, args: List[Arg], expect: Verdict,
@@ -152,6 +171,9 @@ final case class Policy(name: String, decls: List[Decl]):
   def calls: List[Decl.Call] = decls.collect { case d: Decl.Call => d }
   def rules: List[Decl.Rule] = decls.collect { case d: Decl.Rule => d }
   def counts: List[Decl.Count] = decls.collect { case d: Decl.Count => d }
+  def defaults: List[Decl.Default] = decls.collect { case d: Decl.Default => d }
+  def webhooks: List[Decl.Webhook] = decls.collect { case d: Decl.Webhook => d }
+  def notices: List[Decl.Notify] = decls.collect { case d: Decl.Notify => d }
 
 /** A FILE OF TESTS, beside its policy: `tests for payments`, then its tests */
 final case class TestFile(policy: String, tests: List[Decl.Test], pos: Pos)

@@ -8,7 +8,8 @@ private[proof] inline def mix(tag: Int, a: Int): Int =
 private[proof] inline def mix(tag: Int, a: Int, b: Int): Int =
   MurmurHash3.finalizeHash(MurmurHash3.mix(MurmurHash3.mix(MurmurHash3.mix(0x9e3779b9, tag), a), b), 2)
 private[proof] inline def mix(tag: Int, a: Int, b: Int, c: Int): Int =
-  MurmurHash3.finalizeHash(MurmurHash3.mix(MurmurHash3.mix(MurmurHash3.mix(MurmurHash3.mix(0x9e3779b9, tag), a), b), c), 3)
+  MurmurHash3.finalizeHash(MurmurHash3.mix(MurmurHash3.mix(MurmurHash3.mix(MurmurHash3.mix(0x9e3779b9, tag), a), b),
+    c), 3)
 
 private[proof] def listHash(xs: List[Any]): Int =
   var h = 17
