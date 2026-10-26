@@ -72,7 +72,7 @@ final case class TFetch(tool: String, params: List[String], args: List[(String, 
 final case class StateSig(name: String, params: List[Sort], sort: Sort, window: Option[Window], init: Value)
 /** an argument of a call, or a field of a record: its sort, and whether it may be missing */
 final case class Field(name: String, sort: Sort, optional: Boolean)
-final case class CallSig(tool: String, params: List[Field])
+final case class CallSig(tool: String, params: List[Field], reads: Boolean = false)
 
 /** a rule checked: the tools it decides, its condition and updates over their common variables */
 final case class TRule(index: Int, verdict: Verdict, tools: List[String], when: Option[TCond], updates: List[TUpdate],
@@ -210,7 +210,7 @@ object Types:
         duplicates(c.params.map(x => (x.name, x.pos)), "argument")
         c.params.find(x => x.name == "caller" || x.name == "tool" || x.name == "call")
           .foreach(x => problem(x.pos, s"`${x.name}` is every call's own: not an argument"))
-        c.tool -> CallSig(c.tool, c.params.map(x => Field(x.name, norm(x.sort), x.optional)))
+        c.tool -> CallSig(c.tool, c.params.map(x => Field(x.name, norm(x.sort), x.optional)), c.reads)
       }.toMap
       val sigs = Sigs(facts, states, calls, records)
       val rules = p.rules.zipWithIndex.flatMap((r, i) => rule(r, i, sigs))

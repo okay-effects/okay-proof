@@ -216,7 +216,8 @@ object Parser:
       case Tok.Name("call", p) =>
         next()
         val tool = this.tool("a tool's name")
-        Decl.Call(tool, params(), p)
+        val ps = params()
+        Decl.Call(tool, ps, p, reads = acceptWord("reads"))
       case Tok.Name("allow" | "ask" | "deny", p) => rule(p)
       case Tok.Name("count", p) =>
         next()

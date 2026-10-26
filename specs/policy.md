@@ -99,7 +99,7 @@ tests     ::= "tests" "for" name test*                        -- a file of its o
 type      ::= "type" Name                                   -- an entity sort: values are names (ann, acc1)
 fact      ::= "fact" name "(" params ")" (":" sort)? ("from" name)?
 state     ::= "state" name "(" params ")" ":" sort ("per" window)? "=" literal
-call      ::= "call" tool "(" params ")" | "import" "tools" "from" text   -- a server's JSON schema
+call      ::= "call" tool "(" params ")" "reads"? | "import" "tools" "from" text   -- reads: it only reads
 record    ::= "type" Name "=" "{" field ("," field)* "}"
 param     ::= name "?"? ":" sort                                    -- `?`: optional
 rule      ::= verdict target ("when" cond)? ("then" update ("," update)*)? ("because" text)? ("notify" name ("," name)*)?
@@ -206,6 +206,15 @@ approved — and its condition holds; never for a denied one.
 Every verdict but the last is a THEOREM: `deny(call)`, `allow(call)`, `ask(call)` proved in the kernel of the policy's
 theory from the call's facts. The last one, the default deny, is reported with the rules that were tried and why each
 did not apply (the facts it lacked, the comparison that failed) — a refusal needs no proof, an allowance always does.
+
+## Layers
+
+An organization's policy, a team's, an agent's decide the same call (`Layers.combine`, top first, the bottom last). A
+layer that is not the bottom one SAYS NOTHING when no rule of it applied — its own default is ignored there; the words
+combine deny over ask over allow; if no layer said anything, the bottom layer's decision stands, its default with it.
+So a lower layer can make a decision stricter, never looser, and an organization's `deny` default does not close what a
+team allows. A call declared `reads` (`call list_orders() reads`) only reads: what a guard may let through when it
+cannot reach the decision, if its operator chose so — the policy says it, not a guess.
 
 ## Webhooks: notices, the guard's to send
 

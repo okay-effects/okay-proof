@@ -19,7 +19,8 @@ object Printer:
         case None => source.fold("")(s => s" from $s"))
     case Decl.State(n, ps, s, window, init, _) =>
       s"state $n(${params(ps)}): $s" + window.fold("")(w => s" per ${w.word}") + s" = ${expr(init)}"
-    case Decl.Call(tool, ps, _) => s"call ${toolName(tool)}(${params(ps)})"
+    case Decl.Call(tool, ps, _, reads) =>
+      s"call ${toolName(tool)}(${params(ps)})" + (if reads then " reads" else "")
     case Decl.Rule(verdict, target, when, updates, because, _, notifies) =>
       s"${verdict.word} ${targetWord(target)}" +
         when.fold("")(c => s"\n  when ${cond(c)}") +

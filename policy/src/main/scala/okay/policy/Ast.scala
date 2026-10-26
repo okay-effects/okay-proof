@@ -146,7 +146,8 @@ enum Decl:
   case Fact(name: String, params: List[Param], result: Option[Sort], source: Option[String], pos: Pos,
             fetch: Option[Fetch] = None)
   case State(name: String, params: List[Param], sort: Sort, window: Option[Window], init: Expr, pos: Pos)
-  case Call(tool: String, params: List[Param], pos: Pos)
+  /** a tool and its arguments; `reads`: it only reads — what a guard may let through when it cannot decide */
+  case Call(tool: String, params: List[Param], pos: Pos, reads: Boolean = false)
   case Rule(verdict: Verdict, target: Target, when: Option[Cond], updates: List[Update], because: Option[String],
             pos: Pos, notifies: List[String] = Nil)
   /** the verdict when no rule applies: deny unless said */
