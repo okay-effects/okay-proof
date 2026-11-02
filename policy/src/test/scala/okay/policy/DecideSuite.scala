@@ -116,6 +116,32 @@ class DecideSuite extends munit.FunSuite:
       Decide[Row](p, Call.flat("op", ann, Map("n" -> Value.I(4))))))).verdict, Verdict.Deny)
   }
 
+  test("a fact and a state of no argument: their values in conditions, proved (fact failed_in_row(): Int)") {
+    val p = Compiled("""policy z
+      |fact failed_in_row(): Int
+      |fact quiet()
+      |state ops(): Int = 0
+      |call op(n: Int)
+      |ask op when failed_in_row() >= 3 because "three failed"
+      |deny op when ops() >= 2 because "two at most"
+      |allow op when quiet() then ops() += 1
+      |default allow
+      |""".stripMargin).fold(ps => fail(ps.mkString), identity)
+    def verdict(facts: Map[FactRef, Answer]) = run(States.Memory(p.checked).handler(Facts.known(facts)(
+      Decide[Row](p, Call.flat("op", ann, Map("n" -> Value.I(1)))))))
+    val three = Map(FactRef("failed_in_row", Nil) -> Answer.Is(Value.I(3)), FactRef("quiet", Nil) -> Answer.Holds(true))
+    val d = verdict(three)
+    assertEquals(d.verdict, Verdict.Ask, d.toString)
+    assertEquals(d.reasons, List("three failed"))
+    val one = three.updated(FactRef("failed_in_row", Nil), Answer.Is(Value.I(1)))
+    assertEquals(verdict(one).verdict, Verdict.Allow)
+    // the state of no argument: counted, then denying
+    val store = States.Memory(p.checked)
+    def again = run(store.handler(Facts.known(one)(Decide.enforce[Row](p, Call.flat("op", ann,
+      Map("n" -> Value.I(1)))))))
+    assertEquals(List(again.verdict, again.verdict, again.verdict), List(Verdict.Allow, Verdict.Allow, Verdict.Deny))
+  }
+
   test("a wrong evaluator cannot make a wrong decision: a proof of a rule that does not hold is refused") {
     val allow = policy.checked.rulesOf("stripe.create_payment").head
     def k(c: Call) = Known(known ++ Call.facts(policy.checked, c).facts,

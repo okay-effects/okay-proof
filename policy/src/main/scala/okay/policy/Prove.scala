@@ -136,7 +136,7 @@ final class Prove(t: Theorize):
 
   private def isValue(x: Term): Boolean = x match
     case Term.I(_) | Term.D(_) | Term.S(_) => true
-    case Term.Ap(fn, Nil) => true
+    case Term.Ap(fn, Nil) => !t.isFact(fn)
     case _ => false
 
   /** an innermost fact term of a formula: a fact applied to values only */

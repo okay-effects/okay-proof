@@ -25,9 +25,16 @@ final class Theorize(val checked: Checked):
     case Value.T(x) => Term.S(x)
     case Value.E(s, n) => Term.Ap(Fn(n, Nil, okay.proof.Sort.Named(s)), Nil)
 
-  /** a function fact, a state, an argument or a field of the call: a symbol applied to one argument or more, not
-   * the kernel's own */
-  def isFact(fn: Fn): Boolean = fn.args.nonEmpty && !Fns.all.contains(fn)
+  /** the policy's function facts and states of no argument, by name, with their sorts: symbols to be given a value,
+   * not values — an entity (`ann`) is a symbol of no argument too, told apart by its name and sort */
+  private lazy val nullary: Set[(String, okay.proof.Sort)] =
+    (checked.facts.values.collect { case FactSig(n, Nil, Some(r), _, _) => (n, sort(r)) } ++
+      checked.states.values.collect { case StateSig(n, Nil, r, _, _) => (n, sort(r)) }).toSet
+
+  /** a function fact, a state, an argument or a field of the call: a symbol applied to one argument or more (or a
+   * fact or state of none), not the kernel's own */
+  def isFact(fn: Fn): Boolean =
+    (fn.args.nonEmpty || nullary((fn.name, fn.result))) && !Fns.all.contains(fn)
 
   private val callerSort = Sort.Entity(Types.callerType)
   private val callSort = Sort.Entity(Types.callType)
