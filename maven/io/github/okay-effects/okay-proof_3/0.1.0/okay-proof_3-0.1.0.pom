@@ -45,5 +45,11 @@
             <url>https://okay-effects.github.io/okay-scala/maven/</url>
             <layout>default</layout>
         </repository>
+        <repository>
+            <id>okay-datalog</id>
+            <name>okay-datalog</name>
+            <url>https://okay-effects.github.io/okay-datalog/maven/</url>
+            <layout>default</layout>
+        </repository>
     </repositories>
 </project>

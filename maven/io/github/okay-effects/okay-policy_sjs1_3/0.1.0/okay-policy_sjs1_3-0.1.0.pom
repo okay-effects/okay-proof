@@ -43,6 +43,11 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>io.github.okay-effects</groupId>
+            <artifactId>okay-datalog_sjs1_3</artifactId>
+            <version>0.1.0</version>
+        </dependency>
+        <dependency>
             <groupId>org.scalameta</groupId>
             <artifactId>munit_sjs1_3</artifactId>
             <version>1.2.3</version>
@@ -54,6 +59,12 @@
             <id>okay-scala</id>
             <name>okay-scala</name>
             <url>https://okay-effects.github.io/okay-scala/maven/</url>
+            <layout>default</layout>
+        </repository>
+        <repository>
+            <id>okay-datalog</id>
+            <name>okay-datalog</name>
+            <url>https://okay-effects.github.io/okay-datalog/maven/</url>
             <layout>default</layout>
         </repository>
     </repositories>
