@@ -346,7 +346,8 @@ allow admin.* when member(caller, admins)
 ### Plan
 
 1. `Derive`: rules → axioms, a derivation → a theorem; `DeriveSuite` (transitive groups; hypotheses exactly the facts
-   used; a forged derivation refused; every fact okay-datalog derives proved, on random graphs).
+   used; a forged derivation refused; every fact okay-datalog derives proved, on random graphs). Done 2026-11-03: 5
+   tests, JVM and Scala.js; a kernel of another theory (same axiom names) refuses the proof.
 2. The language: `derive`, `table` facts (parser, printer round trip, the checker's errors), translation, evaluation,
    proof of a derived atom inside a decision; `DecideSuite` cases.
 3. Speed: a decision with a derived fact over a hierarchy of hundreds of groups (`PolicyBench`).

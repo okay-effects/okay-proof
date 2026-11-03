@@ -17,6 +17,7 @@ ThisBuild / publishTo := Some(MavenCache("pages", (ThisBuild / pagesRepository).
 ThisBuild / Compile / packageDoc / publishArtifact := false
 
 ThisBuild / resolvers += "okay-scala" at "https://okay-effects.github.io/okay-scala/maven"
+ThisBuild / resolvers += "okay-datalog" at "https://okay-effects.github.io/okay-datalog/maven"
 
 ThisBuild / scalacOptions ++= Seq("-deprecation", "-feature", "-Wunused:imports")
 
@@ -58,7 +59,9 @@ lazy val policy = crossProject(JVMPlatform, JSPlatform).crossType(CrossType.Pure
   .dependsOn(proof)
   .settings(
     name := "okay-policy",
-    libraryDependencies += "org.scalameta" %%% "munit" % "1.2.3" % Test)
+    // derived relations: Datalog computed by okay-datalog, every step re-derived in the kernel (`Derive`)
+    libraryDependencies ++= Seq("io.github.okay-effects" %%% "okay-datalog" % "0.1.0",
+      "org.scalameta" %%% "munit" % "1.2.3" % Test))
 
 lazy val root = (project in file(".")).aggregate(proof.jvm, proof.js, policy.jvm, policy.js)
   .settings(publish / skip := true)
