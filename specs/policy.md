@@ -308,6 +308,49 @@ Updates are made after the decision, only if the call is allowed (or asked and t
 values computed from the facts the decision read — so two calls racing cannot both spend the same budget if the store
 updates atomically (a Durable Object does).
 
+## Derived relations: Datalog, certified (2026-11-03; planned — okay-guard specs/reasoning.md §1)
+
+A relation defined by Horn rules over relation facts, computed by okay-datalog, every step it used re-derived in the
+kernel — so a decision resting on a derived fact stays a theorem with its certificate.
+
+```text
+type Group
+fact in_group(user: User, group: Group) table        -- table: the source gives the whole relation, once
+fact subgroup(group: Group, parent: Group) table
+
+derive member(user: User, group: Group)
+  from in_group(user, group)
+  from member(user, g), subgroup(g, group)          -- g: a variable of the rule, its sort from subgroup's
+
+allow admin.* when member(caller, admins)
+```
+
+- **Rules**: each `from` a body — relation atoms (and later `not` over a lower stratum's relation, and `=` / `!=`);
+  the head the declared relation, its parameters the head's variables; any other variable of a body is the rule's
+  (∃ in the body, ∀ in the axiom). Checked: sorts of every variable agree; bodies safe (every head variable bound by
+  an atom); stratified.
+- **Facts given whole** (`table`): a derived relation's base relations are read as their full extensions (a new
+  `Facts` operation, all of a decision's tables at once); a missing table: the derived relation is unknown — never
+  allows.
+- **Axioms**: rule k of `member` is `∀ user, group, g. member(user, g) ∧ subgroup(g, group) ⇒ member(user, group)`,
+  named `derive member k (line n)`.
+- **Evaluation**: okay-datalog (`Eval.run`, proofs on) over the tables, once per decision that needs a derived
+  relation; a derived atom `member(ann, admins)` then holds or not like a relation fact.
+- **Proof (`Derive`, untrusted)**: the derivation's steps, premises first (okay-datalog's `Result.proof`): a given
+  fact assumed (a hypothesis — what the guard was told), a derived one by its rule's axiom, `∀` out with the
+  variables' values (matched from the head and the premises), the premises' theorems joined by `AndI` as the body is
+  nested, `ImpE`. Each fact proved once per decision. The theorem's hypotheses are exactly the table facts the
+  derivation used: what the audit shows. A wrong step (a forged derivation, a rule of another theory) is refused by
+  the kernel: a bug can make a decision fail, never prove a wrong one.
+
+### Plan
+
+1. `Derive`: rules → axioms, a derivation → a theorem; `DeriveSuite` (transitive groups; hypotheses exactly the facts
+   used; a forged derivation refused; every fact okay-datalog derives proved, on random graphs).
+2. The language: `derive`, `table` facts (parser, printer round trip, the checker's errors), translation, evaluation,
+   proof of a derived atom inside a decision; `DecideSuite` cases.
+3. Speed: a decision with a derived fact over a hierarchy of hundreds of groups (`PolicyBench`).
+
 ## Speed
 
 A policy is parsed and checked once; each tool's candidate rules are compiled to closures. A decision: facts asked
