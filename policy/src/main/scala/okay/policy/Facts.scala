@@ -20,10 +20,16 @@ enum Answer:
  * service's (asynchronous in its handler). A fact not in the answer is unknown */
 enum Facts[X]:
   case Ask(refs: List[FactRef]) extends Facts[Map[FactRef, Answer]]
+  /** relations given whole (`fact … table`): every tuple that holds, by relation — what derived relations are computed
+   * from; a relation not answered is unknown */
+  case Tables(names: List[String]) extends Facts[Map[String, List[List[Value]]]]
 
 object Facts:
   def ask[R[_]](refs: List[FactRef])(using In[Facts, R]): Map[FactRef, Answer] ! R =
     if refs.isEmpty then pure(Map.empty) else perform[Facts](Ask(refs))
+
+  def tables[R[_]](names: List[String])(using In[Facts, R]): Map[String, List[List[Value]]] ! R =
+    if names.isEmpty then pure(Map.empty) else perform[Facts](Tables(names))
 
   /** the sources a policy's facts name (`fact balance(...): Dec from stripe`) that are not among `registered`: what a
    * guard checks when it loads a policy — a fact of a missing source is always unknown */
@@ -56,6 +62,22 @@ object Facts:
         Async.async[Map[FactRef, Answer], Rest](cb => Async.start(all).future.onComplete {
           case scala.util.Success(m) => cb(Right(m))
           case _ => cb(Right(Map.empty))
+        }(using ExecutionContext.parasitic)).flatMap(k)
+      case Tables(names) =>
+        // each table of its source (the local one when it names none), all at once, each within the timeout
+        def table(n: String): Option[List[List[Value]]] ! Async =
+          checked.facts.get(n).flatMap(_.source).fold(Some(local))(sources.get).fold(pure(None)) { src =>
+            Async.async[Option[List[List[Value]]], Async](cb =>
+              Async.start(Async.timeout(timeoutMs)(defer(src.table(n)))).future.onComplete {
+                case scala.util.Success(Some(t)) => cb(Right(t))
+                case _ => cb(Right(None))
+              }(using ExecutionContext.parasitic))
+          }
+        val all = Async.parTraverse(names.distinct)(n => table(n).map(n -> _))
+          .map(_.collect { case (n, Some(t)) => n -> t }.toMap)
+        Async.async[Map[String, List[List[Value]]], Rest](cb => Async.start(all).future.onComplete {
+          case scala.util.Success(m) => cb(Right(m))
+          case _ => cb(Right(Map.empty))
         }(using ExecutionContext.parasitic)).flatMap(k)))
 
   /** an answer of the fact's kind and sort: a relation true or false, a function's value of its result's sort */
@@ -70,12 +92,17 @@ object Facts:
   /** the facts of a map: a test's `given`, a request's known facts */
   def known[R[_], Rest[_], A](known: Map[FactRef, Answer])(p: A ! R)(using Split[Facts, R, Rest]): A ! Rest =
     handle(p, Handler.tail[Facts, Rest, A, A](pure)([X] => (op: Facts[X]) => op match
-      case Ask(refs) => refs.flatMap(r => known.get(r).map(r -> _)).toMap))
+      case Ask(refs) => refs.flatMap(r => known.get(r).map(r -> _)).toMap
+      // a map's relation is whole: what it holds true is every tuple of it (a test's `given`)
+      case Tables(names) => names.map(n => n -> known.toList.collect {
+        case (FactRef(`n`, args), Answer.Holds(true)) => args }).toMap))
 
 /** A SOURCE OF FACTS: asked all of a decision's facts it is the source of, at once, asynchronously — Stripe's API, a
  * database, an MCP server's tool, the session. What it does not answer is unknown */
 trait Source:
   def ask(refs: List[FactRef]): Map[FactRef, Answer] ! Async
+  /** a relation given whole (`fact … table`): every tuple that holds; None when this source does not give it */
+  def table(name: String): Option[List[List[Value]]] ! Async = pure(None)
 
 object Source:
   /** a source answering by a future: an HTTP client's, a driver's */
@@ -86,6 +113,11 @@ object Source:
 
   /** a source of no fact */
   val none: Source = _ => pure(Map.empty)
+
+  /** a source of relations given whole, by name (and of no single fact) */
+  def tables(ts: Map[String, List[List[Value]]]): Source = new Source:
+    def ask(refs: List[FactRef]): Map[FactRef, Answer] ! Async = pure(Map.empty)
+    override def table(name: String): Option[List[List[Value]]] ! Async = pure(ts.get(name))
 
   /**
    * THE FACTS FETCHED BY MCP TOOLS (`fact balance(a: Account): Dec from mcp stripe.retrieve_balance(account: a) at

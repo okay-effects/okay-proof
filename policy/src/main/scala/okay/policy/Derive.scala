@@ -105,3 +105,19 @@ final class Derive(val name: String, val program: dl.Program, val sorts: Map[Str
     case Nil => Infer.refuse[R]("a rule with no premise")
     case List(t) => pure(t)
     case t :: rest => joined[R](rest).flatMap(r => Infer.andI[R](t, r))
+
+object Derive:
+  /** a policy's value as okay-datalog's constant: an entity its name, a text itself, a number its digits */
+  def text(v: Value): String = v match
+    case Value.E(_, n) => n
+    case Value.T(t) => t
+    case Value.I(i) => i.toString
+    case Value.D(d) => d.bigDecimal.toPlainString
+
+  /** a term of a value as okay-datalog's constant: the inverse of `Derive.constant` */
+  def text(t: Term): String = t match
+    case Term.Ap(fn, Nil) => fn.name
+    case Term.S(s) => s
+    case Term.I(i) => i.toString
+    case Term.D(d) => d.bigDecimal.toPlainString
+    case other => throw IllegalArgumentException(s"not a value: $other")

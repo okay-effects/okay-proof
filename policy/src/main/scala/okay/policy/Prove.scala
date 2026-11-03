@@ -197,7 +197,7 @@ final class Prove(t: Theorize):
     stuck match
       case Some(why) => Infer.refuse[R](why)
       case None =>
-        steps.reverseIterator.foldLeft(closed[R](g)) { case (p, (template, x, ft, v)) =>
+        steps.reverseIterator.foldLeft(closed[R](g, known)) { case (p, (template, x, ft, v)) =>
           for
             th <- p
             eq <- reversed[R](ft, v)
@@ -215,14 +215,21 @@ final class Prove(t: Theorize):
     yield back
 
   /** a closed formula with no fact in it: computed, or equal names by reflexivity, or by its parts */
-  private def closed[R[_]: Has[Infer]](f: Formula): Thm ! R =
+  private def closed[R[_]: Has[Infer]](f: Formula, known: Known): Thm ! R =
     if Arithmetic.truth(f).contains(true) then Infer.compute[R](f)
     else f match
+      // a derived relation: its derivation re-derived in the kernel, its hypotheses the table facts it used
+      case F.P(p, as) if t.checked.derived.contains(p.name) => (t.derive, known.derived) match
+        case (Some(d), Some(result)) => d.prove[R](result, okay.datalog.Fact(p.name, as.map(Derive.text).toVector))
+        case _ => Infer.refuse[R](s"$f: a derived relation not computed")
+      case F.Not(F.P(p, _)) if t.checked.derived.contains(p.name) =>
+        Infer.refuse[R](s"$f: a derived relation under not is not proved yet")
       case F.Eq(a, b) if a == b => Infer.refl[R](a)
       case F.Or(a, b) =>
-        if provable(a) then closed[R](a).flatMap(x => Infer.step[R](Rule.OrI1(x, b)))
-        else closed[R](b).flatMap(y => Infer.step[R](Rule.OrI2(a, y)))
-      case F.And(a, b) => for x <- closed[R](a); y <- closed[R](b); t <- Infer.andI[R](x, y) yield t
+        if provable(a) then closed[R](a, known).flatMap(x => Infer.step[R](Rule.OrI1(x, b)))
+        else closed[R](b, known).flatMap(y => Infer.step[R](Rule.OrI2(a, y)))
+      case F.And(a, b) =>
+        for x <- closed[R](a, known); y <- closed[R](b, known); t <- Infer.andI[R](x, y) yield t
       // a relation of values the guard knows (the evaluator read it true, or false under `not`): a hypothesis
       case F.P(_, _) | F.Not(F.P(_, _)) => Infer.assume[R](f)
       case _ => Infer.refuse[R](s"not provable by computation: $f")

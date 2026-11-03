@@ -92,7 +92,7 @@ private object Lexer:
  * — a declaration begins with its keyword */
 object Parser:
   private val declWords = Set("type", "fact", "state", "call", "allow", "ask", "deny", "count", "test", "default",
-    "webhook", "notify")
+    "webhook", "notify", "derive")
   /** the words no name may be; the others (`from`, `per`, `given`, `calls`, `expect`) are keywords only where they
    * stand, so a state may be called `calls` */
   private val keywords = declWords ++ Set("policy", "when", "then", "because", "and", "or", "not", "in")
@@ -201,9 +201,21 @@ object Parser:
             sym(")")
             word("at")
             val at = text("a path in the tool's result, in quotes")
-            Decl.Fact(n, ps, result, Some("mcp:" + tool), p, Some(Fetch(tool, as.toList, at, fp)))
-          else Decl.Fact(n, ps, result, Some(name("a source's name")._1), p)
-        else Decl.Fact(n, ps, result, None, p)
+            Decl.Fact(n, ps, result, Some("mcp:" + tool), p, Some(Fetch(tool, as.toList, at, fp)),
+              acceptWord("table"))
+          else Decl.Fact(n, ps, result, Some(name("a source's name")._1), p, table = acceptWord("table"))
+        else Decl.Fact(n, ps, result, None, p, table = acceptWord("table"))
+      case Tok.Name("derive", p) =>
+        next()
+        val (n, _) = name("a derived relation's name")
+        val ps = params()
+        val bodies = ArrayBuffer.empty[List[Cond.Holds]]
+        while acceptWord("from") do
+          val atoms = ArrayBuffer(derivedAtom())
+          while acceptSym(",") do atoms += derivedAtom()
+          bodies += atoms.toList
+        if bodies.isEmpty then expected("'from' and a rule's atoms")
+        Decl.Derive(n, ps, bodies.toList, p)
       case Tok.Name("state", p) =>
         next()
         val (n, _) = name("a state's name")
@@ -261,6 +273,17 @@ object Parser:
       case Tok.Name("hour", _) => next(); Window.Hour
       case Tok.Name("day", _) => next(); Window.Day
       case _ => expected("minute, hour or day")
+
+    /** an atom of a derived relation's rule: a relation applied to variables, `subgroup(g, group)` */
+    private def derivedAtom(): Cond.Holds =
+      val (n, p) = name("a relation")
+      sym("(")
+      val as = ArrayBuffer.empty[Expr]
+      if !isSym(")") then
+        as += { val (v, vp) = name("a variable"); Expr.Var(v, vp) }
+        while acceptSym(",") do as += { val (v, vp) = name("a variable"); Expr.Var(v, vp) }
+      sym(")")
+      Cond.Holds(n, as.toList, p)
 
     private def params(): List[Param] =
       sym("(")

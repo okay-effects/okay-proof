@@ -349,7 +349,10 @@ allow admin.* when member(caller, admins)
    used; a forged derivation refused; every fact okay-datalog derives proved, on random graphs). Done 2026-11-03: 5
    tests, JVM and Scala.js; a kernel of another theory (same axiom names) refuses the proof.
 2. The language: `derive`, `table` facts (parser, printer round trip, the checker's errors), translation, evaluation,
-   proof of a derived atom inside a decision; `DecideSuite` cases.
+   proof of a derived atom inside a decision; `DecideSuite` cases. Done 2026-11-03 (`DerivedSuite`, JVM and Scala.js): `Facts.Tables`
+   (relations given whole; `Facts.known` answers a map's relation as whole, `Facts.from` asks each table's source —
+   `Source.table`, `Source.tables`); derived atoms answered in `Decide` (a table not answered: unknown); `Prove` re-derives
+   them by `Derive` (hypotheses: the table facts used); `not` of a derived relation refused by the checker for now.
 3. Speed: a decision with a derived fact over a hierarchy of hundreds of groups (`PolicyBench`).
 
 ## Speed

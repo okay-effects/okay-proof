@@ -144,7 +144,11 @@ enum Decl:
   case Type(name: String, pos: Pos)
   case Record(name: String, fields: List[Param], pos: Pos)
   case Fact(name: String, params: List[Param], result: Option[Sort], source: Option[String], pos: Pos,
-            fetch: Option[Fetch] = None)
+            fetch: Option[Fetch] = None, table: Boolean = false)
+  /** a relation derived by rules over relation facts given whole (`table`) and other derived relations — each rule a
+   * body of atoms whose arguments are variables: the head's parameters and the rule's own (specs/policy.md, "Derived
+   * relations") */
+  case Derive(name: String, params: List[Param], bodies: List[List[Cond.Holds]], pos: Pos)
   case State(name: String, params: List[Param], sort: Sort, window: Option[Window], init: Expr, pos: Pos)
   /** a tool and its arguments; `reads`: it only reads — what a guard may let through when it cannot decide */
   case Call(tool: String, params: List[Param], pos: Pos, reads: Boolean = false)
@@ -168,6 +172,7 @@ final case class Policy(name: String, decls: List[Decl]):
   def types: List[Decl.Type] = decls.collect { case d: Decl.Type => d }
   def records: List[Decl.Record] = decls.collect { case d: Decl.Record => d }
   def facts: List[Decl.Fact] = decls.collect { case d: Decl.Fact => d }
+  def derives: List[Decl.Derive] = decls.collect { case d: Decl.Derive => d }
   def states: List[Decl.State] = decls.collect { case d: Decl.State => d }
   def calls: List[Decl.Call] = decls.collect { case d: Decl.Call => d }
   def rules: List[Decl.Rule] = decls.collect { case d: Decl.Rule => d }

@@ -51,12 +51,35 @@ object Decide:
                 Eval.ref(u.state, u.key, env, fromCall).map(true -> _))
           val needed = (rules.flatMap(r => read(r.when, r.updates)) ++ counts.flatMap(c => read(c.when, c.updates)))
             .distinct
-          // asked: the policy's own facts and states; the call's facts it gave itself
-          val (states, facts) = needed.filter((st, r) => st || policy.checked.facts.contains(r.name)).partition(_._1)
+          // asked: the policy's own facts and states; the call's facts it gave itself; derived relations computed
+          val (states, ownFacts) = needed.filter((st, r) => st || policy.checked.facts.contains(r.name)).partition(_._1)
+          val (derivedRefs, facts) = ownFacts.partition((_, r) => policy.checked.derived.contains(r.name))
           for
             fs <- Facts.ask[R](facts.map(_._2))
             ss <- States.read[R](states.map(_._2))
-          yield decide(policy, call, rules, counts, Known(fs ++ supplied.facts, ss, supplied.lists))
+            ds <- derived[R](policy, derivedRefs.map(_._2))
+          yield decide(policy, call, rules, counts, Known(fs ++ supplied.facts ++ ds._1, ss, supplied.lists, ds._2))
+
+  /**
+   * DERIVED RELATIONS (specs/policy.md, "Derived relations"): when a candidate rule reads one, every table asked at
+   * once, okay-datalog computes them, each derived atom read holds or not; a table not answered leaves them unknown —
+   * so they never allow
+   */
+  private def derived[R[_]](policy: Compiled, refs: List[FactRef])(using In[Facts, R])
+    : (Map[FactRef, Answer], Option[okay.datalog.Result]) ! R =
+    (policy.theorize.derive, refs) match
+      case (None, _) | (_, Nil) => pure((Map.empty, None))
+      case (Some(d), _) =>
+        val names = policy.checked.tables.toList.sorted
+        Facts.tables[R](names).map { ts =>
+          if !names.forall(ts.contains) then (Map.empty, None)
+          else d.run(ts.toList.flatMap((n, rows) =>
+              rows.map(row => okay.datalog.Fact(n, row.map(Derive.text).toVector))))
+            .toOption.fold((Map.empty, None)) { result =>
+              (refs.map(r => r -> Answer.Holds(result.contains(okay.datalog.Fact(r.name,
+                r.args.map(Derive.text).toVector)))).toMap, Some(result))
+            }
+        }
 
   /** the decision, with what is known */
   def decide(policy: Compiled, call: Call, rules: List[TRule], counts: List[TCount], known: Known): Decision =

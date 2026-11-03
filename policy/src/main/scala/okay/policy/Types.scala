@@ -89,12 +89,18 @@ final case class TTest(name: String, givens: List[TGiven], caller: Value, tool: 
 final case class TNotice(names: List[String], on: NoticeOn, tools: List[String], when: Option[TCond],
                          source: Decl.Notify)
 
+/** a derived relation checked: its parameters (the head's variables) with their sorts, its rules' bodies — each atom a
+ * relation and its variables */
+final case class TDerive(name: String, params: List[(String, Sort)], bodies: List[List[(String, List[String])]],
+                         source: Decl.Derive)
+
 /** A POLICY CHECKED: its signatures, and its rules and tests over them — what the evaluator runs; its default verdict
  * (deny unless said), its webhooks and its notices — the guard's to act on */
 final case class Checked(policy: Policy, types: Set[String], records: Map[String, List[Field]],
                          facts: Map[String, FactSig], states: Map[String, StateSig], calls: Map[String, CallSig],
                          rules: List[TRule], counts: List[TCount], default: Verdict = Verdict.Deny,
-                         webhooks: Map[String, Hook] = Map.empty, notices: List[TNotice] = Nil):
+                         webhooks: Map[String, Hook] = Map.empty, notices: List[TNotice] = Nil,
+                         tables: Set[String] = Set.empty, derived: Map[String, TDerive] = Map.empty):
   /** the rules deciding `tool`, in the policy's order */
   lazy val rulesOf: Map[String, List[TRule]] = calls.keys.map(t => t -> rules.filter(_.tools.contains(t))).toMap
   /** the counts of `tool`'s calls */
@@ -198,6 +204,48 @@ object Types:
         }
         f.name -> FactSig(f.name, f.params.map(_.sort), f.result, f.source, fetch)
       }.toMap
+      // TABLES: relation facts given whole — what derived relations are computed from
+      p.facts.filter(_.table).foreach { f =>
+        if f.result.isDefined then problem(f.pos, s"a table is a relation: ${f.name} has a value")
+        if f.fetch.isDefined then problem(f.pos, s"a table is given whole, not fetched by a tool: ${f.name}")
+      }
+      val tables = p.facts.filter(f => f.table && f.result.isEmpty && f.fetch.isEmpty).map(_.name).toSet
+      // DERIVED RELATIONS: rules over tables and derived relations, their arguments variables of agreeing sorts
+      duplicates(p.derives.map(d => (d.name, d.pos)), "derived relation")
+      p.derives.filter(d => facts.contains(d.name) || p.states.exists(_.name == d.name))
+        .foreach(d => problem(d.pos, s"${d.name} is a fact or a state already"))
+      val derivedParams: Map[String, List[Sort]] = p.derives.map(d => d.name -> d.params.map(x => norm(x.sort))).toMap
+      val derived: Map[String, TDerive] = p.derives.flatMap { d =>
+        d.params.foreach { x =>
+          known(x.sort, x.pos)
+          flat(x.sort, x.pos, s"a derived relation's parameter ${x.name}")
+        }
+        duplicates(d.params.map(x => (x.name, x.pos)), "parameter")
+        val before = problems.size
+        d.bodies.foreach { body =>
+          val sortOf = scala.collection.mutable.Map.from(d.params.map(x => x.name -> norm(x.sort)))
+          body.foreach { a =>
+            val sig = if tables(a.name) then facts.get(a.name).map(_.params.map(norm)) else derivedParams.get(a.name)
+            sig match
+              case None => problem(a.pos,
+                s"${a.name}: a derived relation's rule reads tables (`fact … table`) and derived relations")
+              case Some(ps) if ps.size != a.args.size =>
+                problem(a.pos, s"${a.name} takes ${ps.size} arguments, given ${a.args.size}")
+              case Some(ps) => a.args.zip(ps).foreach {
+                case (Expr.Var(v, vp), s) => sortOf.get(v) match
+                  case Some(s0) if s0 != s => problem(vp, s"$v is $s0 and $s in one rule of ${d.name}")
+                  case Some(_) => ()
+                  case None => sortOf(v) = s
+                case (e, _) => problem(e.pos, s"a derived relation's rule takes variables, not ${Printer.expr(e)}")
+              }
+          }
+          val bound = body.flatMap(_.args.collect { case Expr.Var(v, _) => v }).toSet
+          d.params.filterNot(x => bound(x.name))
+            .foreach(x => problem(x.pos, s"${x.name} is not bound by a rule of ${d.name}: every rule names it"))
+        }
+        Option.when(problems.size == before)(d.name -> TDerive(d.name, d.params.map(x => x.name -> norm(x.sort)),
+          d.bodies.map(_.map(a => a.name -> a.args.collect { case Expr.Var(v, _) => v })), d))
+      }.toMap
       val states = p.states.flatMap { s =>
         s.params.foreach(x => { known(x.sort, x.pos); flat(x.sort, x.pos, s"a state's key ${x.name}") })
         known(s.sort, s.pos)
@@ -212,8 +260,21 @@ object Types:
           .foreach(x => problem(x.pos, s"`${x.name}` is every call's own: not an argument"))
         c.tool -> CallSig(c.tool, c.params.map(x => Field(x.name, norm(x.sort), x.optional)), c.reads)
       }.toMap
-      val sigs = Sigs(facts, states, calls, records)
+      // a derived relation reads in a condition as a relation fact does
+      val readable = facts ++ derived.map((n, t) => n -> FactSig(n, t.params.map(_._2), None, None))
+      val sigs = Sigs(readable, states, calls, records)
       val rules = p.rules.zipWithIndex.flatMap((r, i) => rule(r, i, sigs))
+      // not of a derived relation: a closed-world negation the kernel cannot prove yet
+      def negated(c: TCond): List[String] = c match
+        case TCond.Not(TCond.Holds(n, _)) if derived.contains(n) => List(n)
+        case TCond.Not(a) => negated(a)
+        case TCond.And(a, b) => negated(a) ++ negated(b)
+        case TCond.Or(a, b) => negated(a) ++ negated(b)
+        case TCond.Every(_, _, b) => negated(b)
+        case TCond.Exists(_, _, b) => negated(b)
+        case _ => Nil
+      rules.foreach(r => r.when.toList.flatMap(negated).distinct.foreach(n =>
+        problem(r.source.pos, s"not $n: a derived relation under `not` is not supported yet")))
       val counts = p.counts.flatMap(count(_, sigs))
       p.defaults.drop(1).foreach(d => problem(d.pos, "a second default: a policy has one"))
       duplicates(p.webhooks.map(w => (w.name, w.pos)), "webhook")
@@ -230,7 +291,8 @@ object Types:
       }
       val default = p.defaults.headOption.fold(Verdict.Deny)(_.verdict)
       if problems.isEmpty then
-        Right(Checked(p, types, records, facts, states, calls, rules, counts, default, hooks, notices))
+        Right(Checked(p, types, records, readable, states, calls, rules, counts, default, hooks, notices, tables,
+          derived))
       else Left(problems.toList.sortBy(q => (q.pos.line, q.pos.col)))
 
     def tests(c: Checked, f: TestFile): Either[List[Problem], List[TTest]] =

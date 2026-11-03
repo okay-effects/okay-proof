@@ -11,12 +11,15 @@ object Printer:
   def decl(d: Decl): String = d match
     case Decl.Type(n, _) => s"type $n"
     case Decl.Record(n, fs, _) => s"type $n = { ${params(fs)} }"
-    case Decl.Fact(n, ps, result, source, _, fetch) =>
+    case Decl.Fact(n, ps, result, source, _, fetch, table) =>
       s"fact $n(${params(ps)})" + result.fold("")(s => s": $s") + (fetch match
         case Some(f) =>
           val as = f.args.map((k, v) => s"$k: ${expr(v)}").mkString(", ")
           s" from mcp ${f.tool}($as) at ${quote(f.at)}"
-        case None => source.fold("")(s => s" from $s"))
+        case None => source.fold("")(s => s" from $s")) + (if table then " table" else "")
+    case Decl.Derive(n, ps, bodies, _) =>
+      s"derive $n(${params(ps)})" + bodies.map(b => "\n  from " + b.map(a =>
+        s"${a.name}(${a.args.map(expr).mkString(", ")})").mkString(", ")).mkString
     case Decl.State(n, ps, s, window, init, _) =>
       s"state $n(${params(ps)}): $s" + window.fold("")(w => s" per ${w.word}") + s" = ${expr(init)}"
     case Decl.Call(tool, ps, _, reads) =>

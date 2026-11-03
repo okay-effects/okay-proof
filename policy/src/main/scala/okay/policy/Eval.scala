@@ -3,7 +3,7 @@ package okay.policy
 /** what a decision reads: the facts answered (the call's own among them), the states' values, and the call's lists,
  * each with all its elements */
 final case class Known(facts: Map[FactRef, Answer], states: Map[FactRef, Value],
-                       lists: Map[FactRef, List[Value]] = Map.empty)
+                       lists: Map[FactRef, List[Value]] = Map.empty, derived: Option[okay.datalog.Result] = None)
 
 /**
  * THE EVALUATOR, untrusted: a condition's truth under a call and what is known — `None` where a fact it needs is

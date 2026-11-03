@@ -127,10 +127,24 @@ final class Theorize(val checked: Checked):
     val head = F.P(openVerdict(r.verdict), openVars)
     openName(r) -> Formula.all(openVars*)(openWhen(r).map(formula).fold(head)(_ implies head))
 
+  /** the derived relations' rules as okay-datalog's program, in the order they are declared, and their axioms
+   * (specs/policy.md, "Derived relations") */
+  val derive: Option[Derive] = Option.when(checked.derived.nonEmpty) {
+    val ds = checked.policy.derives.flatMap(d => checked.derived.get(d.name))
+    val rules = ds.toVector.flatMap(d => d.bodies.map(body => okay.datalog.Rule(
+      okay.datalog.Atom(d.name, d.params.map((n, _) => okay.datalog.Term.Var(n)).toVector),
+      body.map((r, vs) => okay.datalog.Literal.Pos(okay.datalog.Atom(r, vs.map(okay.datalog.Term.Var(_)).toVector)))
+        .toVector)))
+    val sorts = ds.map(d => d.name -> d.params.map(p => sort(p._2))).toMap ++
+      checked.tables.map(n => n -> checked.facts(n).params.map(sort))
+    Derive(checked.policy.name, okay.datalog.Program(rules), sorts)
+  }
+
   val theory: Theory = Theory(checked.policy.name, ((for
     r <- checked.rules
     t <- r.tools
-  yield axiom(r, t)) ++ checked.rules.filter(r => checked.open(r.source.target)).map(openAxiom))*)
+  yield axiom(r, t)) ++ checked.rules.filter(r => checked.open(r.source.target)).map(openAxiom) ++
+    derive.toList.flatMap(_.axiomPairs))*)
 
   /** the kernel of the policy: the only maker of its decisions */
   val kernel: Kernel = Kernel(theory)
