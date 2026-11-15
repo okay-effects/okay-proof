@@ -106,8 +106,9 @@ object Decide:
     : Decision =
     val env = call.env
     def applies(r: TRule): Boolean = r.when.forall(c => Eval.holds(c, env, known).contains(true))
+    // a proof is a closed program checked to its end, a run of its own inside the policy's (`runIsolated`)
     def proved(r: TRule): Either[String, Thm] =
-      run(Infer.by(policy.kernel)(policy.prove.decision[Infer](r, call, known)))
+      runIsolated(Infer.by(policy.kernel)(policy.prove.decision[Infer](r, call, known)))
     def first(v: Verdict): Option[(TRule, Either[String, Thm])] =
       rules.iterator.filter(r => r.verdict == v && applies(r)).map(r => (r, proved(r))).find(_._2.isRight)
     def made(v: Verdict, r: TRule, thm: Thm): Decision =
